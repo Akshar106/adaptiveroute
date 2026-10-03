@@ -1,0 +1,555 @@
+/* Design tokens: the dataviz reference palette, light values first, dark below. */
+:root {
+  color-scheme: light;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  --wash: rgba(11, 11, 11, 0.04);
+  --good-text: #006300;
+
+  /* categorical slots, fixed order (agents own 1-5) */
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --s4: #eda100;
+  --s5: #e87ba4;
+  --s6: #008300;
+  --s7: #4a3aa7;
+  --s8: #e34948;
+
+  /* status: never themed, always paired with an icon + label */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+
+  /* sequential blue ramp (heatmap cells) */
+  --seq-100: #cde2fb;
+  --seq-200: #9ec5f4;
+  --seq-300: #6da7ec;
+  --seq-400: #3987e5;
+  --seq-500: #256abf;
+  --seq-600: #184f95;
+  --seq-700: #0d366b;
+
+  --radius: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --ink-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --wash: rgba(255, 255, 255, 0.05);
+    --good-text: #0ca30c;
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --s4: #c98500;
+    --s5: #d55181;
+    --s6: #008300;
+    --s7: #9085e9;
+    --s8: #e66767;
+  }
+}
+
+/* --- base ----------------------------------------------------------------------- */
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.5 var(--font);
+}
+h1,
+h2,
+h3 {
+  margin: 0 0 8px;
+  line-height: 1.25;
+}
+h1 {
+  font-size: 18px;
+}
+h2 {
+  font-size: 16px;
+}
+h3 {
+  font-size: 14px;
+}
+p {
+  margin: 0 0 8px;
+}
+a {
+  color: inherit;
+}
+code,
+pre,
+.mono {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.muted {
+  color: var(--ink-2);
+}
+.small {
+  font-size: 12px;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+:focus-visible {
+  outline: 2px solid var(--ink-2);
+  outline-offset: 2px;
+}
+
+/* --- layout --------------------------------------------------------------------- */
+.app-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.header-row {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 12px 16px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+.header-row .spacer {
+  flex: 1;
+}
+.tabs {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 16px;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+.tabs a {
+  padding: 10px 10px 8px;
+  text-decoration: none;
+  color: var(--ink-2);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.tabs a[aria-current="page"] {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+  font-weight: 600;
+}
+main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 16px;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.stack > button,
+.stack > a {
+  align-self: flex-start;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 12px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  min-width: 0;
+}
+.card.selected {
+  border-color: var(--ink-2);
+}
+.dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0;
+}
+.dl dt {
+  color: var(--ink-2);
+}
+.dl dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.refreshing {
+  opacity: 0.55;
+  transition: opacity 0.2s;
+}
+
+/* --- forms ---------------------------------------------------------------------- */
+label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+input,
+select,
+textarea,
+button {
+  font: inherit;
+  color: inherit;
+}
+input[type="text"],
+input[type="password"],
+select,
+textarea {
+  background: var(--surface);
+  border: 1px solid var(--axis);
+  border-radius: 6px;
+  padding: 6px 8px;
+  max-width: 100%;
+}
+textarea {
+  width: 100%;
+  resize: vertical;
+}
+button,
+.button {
+  border: 1px solid var(--axis);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+button.primary {
+  background: var(--ink);
+  color: var(--surface);
+  border-color: var(--ink);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  text-decoration: underline;
+}
+.api-key input {
+  width: 200px;
+}
+
+/* --- notices, badges, tags ---------------------------------------------------------- */
+.notice {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--ink-muted);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.notice.error {
+  border-left-color: var(--critical);
+}
+.notice.warning {
+  border-left-color: var(--warning);
+}
+.notice ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.status .icon {
+  font-weight: 700;
+}
+.badge {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: var(--wash);
+  white-space: nowrap;
+}
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+.dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.agent-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* --- tables --------------------------------------------------------------------- */
+.table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+th,
+td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--grid);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  font-weight: 600;
+  color: var(--ink-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+tbody th {
+  color: var(--ink);
+  font-size: inherit;
+  font-weight: 500;
+}
+td.heat {
+  border: 2px solid var(--surface); /* the 2px surface gap between cells */
+}
+tr.clickable {
+  cursor: pointer;
+}
+tr.clickable:hover,
+tr.active {
+  background: var(--wash);
+}
+caption {
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 6px;
+}
+
+/* --- answer text ---------------------------------------------------------------- */
+.answer-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0 0 8px;
+}
+.code-block {
+  margin: 0 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--wash);
+}
+.code-block .lang {
+  display: block;
+  padding: 2px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink-2);
+  font-size: 11px;
+}
+.code-block pre {
+  margin: 0;
+  padding: 10px;
+  overflow-x: auto;
+}
+pre.raw {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--wash);
+  padding: 12px;
+  border-radius: 6px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+/* --- charts --------------------------------------------------------------------- */
+.chart {
+  position: relative;
+  width: 100%;
+}
+.chart svg {
+  display: block;
+  overflow: visible;
+}
+.chart text {
+  fill: var(--ink-2);
+  font-size: 11px;
+}
+.chart .label-strong {
+  fill: var(--ink);
+  font-size: 12px;
+  /* a surface-coloured halo keeps direct labels legible where they cross a line */
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.gridline {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+.axisline {
+  stroke: var(--axis);
+  stroke-width: 1;
+}
+.mark {
+  cursor: default;
+}
+.mark:hover,
+.mark:focus {
+  filter: brightness(1.12);
+  outline: none;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--ink-2);
+  margin: 4px 0 8px;
+}
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tooltip {
+  position: absolute;
+  z-index: 10;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 10px));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  max-width: 240px;
+}
+.tip-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
+.tip-key {
+  width: 12px;
+  height: 2px;
+  flex: none;
+}
+.meter {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--grid);
+  overflow: hidden;
+}
+.meter > div {
+  height: 100%;
+  background: var(--ink-2);
+}
+
+/* --- trace waterfall ---------------------------------------------------------------- */
+.waterfall {
+  display: grid;
+  grid-template-columns: minmax(120px, 38%) 1fr;
+  font-size: 12px;
+}
+.wf-row {
+  display: contents;
+}
+.wf-name,
+.wf-track {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--grid);
+  min-width: 0;
+}
+.wf-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 8px;
+}
+.wf-name button {
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wf-track {
+  position: relative;
+}
+.wf-bar {
+  position: absolute;
+  top: 6px;
+  height: 10px;
+  min-width: 2px;
+  border-radius: 0 3px 3px 0;
+  background: var(--ink-muted);
+}
+.wf-bar.error {
+  background: var(--critical);
+}
+.wf-selected .wf-name,
+.wf-selected .wf-track {
+  background: var(--wash);
+}
+.wf-axis {
+  position: relative;
+  height: 18px;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+.wf-axis span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+@media (max-width: 600px) {
+  .api-key input {
+    width: 140px;
+  }
+  .card {
+    padding: 12px;
+  }
+}

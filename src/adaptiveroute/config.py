@@ -8,6 +8,7 @@ and referenced by benchmark reports.
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
@@ -18,7 +19,9 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 Environment = Literal["dev", "test", "prod"]
 StrategyName = Literal["round_robin", "embedding", "llm", "adaptive"]
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# Repository root when running from a checkout; containers set AR_PROJECT_ROOT=/app
+# because an installed package lives under site-packages.
+PROJECT_ROOT = Path(os.environ.get("AR_PROJECT_ROOT") or Path(__file__).resolve().parents[2])
 
 
 class Settings(BaseSettings):

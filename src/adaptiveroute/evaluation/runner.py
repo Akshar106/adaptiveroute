@@ -68,6 +68,11 @@ def _git() -> dict[str, Any]:
     return {"git_sha": sha, "git_dirty": dirty}
 
 
+def _rel(path: Path) -> str:
+    """Repository-relative path when possible (keeps reports machine-independent)."""
+    return str(path.relative_to(PROJECT_ROOT)) if path.is_relative_to(PROJECT_ROOT) else str(path)
+
+
 def _version(pkg: str) -> str | None:
     try:
         return importlib.metadata.version(pkg)
@@ -202,12 +207,10 @@ async def run_replay_benchmark_core(
     report["caveats"] = caveats
     report["provenance"] = {
         **_git(),
-        "dataset_path": str(dataset.path.relative_to(PROJECT_ROOT)) if dataset.path else None,
+        "dataset_path": _rel(dataset.path) if dataset.path else None,
         "dataset_sha256": dataset.sha256,
         "dataset_items": len(dataset),
-        "matrix_path": str(matrix_path.relative_to(PROJECT_ROOT))
-        if matrix_path.is_relative_to(PROJECT_ROOT)
-        else str(matrix_path),
+        "matrix_path": _rel(matrix_path),
         "matrix_sha256": hashlib.sha256(matrix_path.read_bytes()).hexdigest()
         if matrix_path.exists()
         else None,

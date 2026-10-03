@@ -88,7 +88,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "PTH", "ASYNC240"]
 "migrations/**" = ["E501"]
-"scripts/**" = ["S311"]  # seeded RNG for reproducible fixtures, not crypto
+"scripts/**" = ["S311", "E501"]  # seeded RNG for reproducible fixtures; long PromQL lines
 "src/adaptiveroute/evaluation/report.py" = ["E501"]  # markdown table templates
 # Offline batch jobs: blocking file reads inside async functions are intentional.
 "src/adaptiveroute/evaluation/**" = ["ASYNC240"]

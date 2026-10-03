@@ -1,6 +1,9 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 UV ?= uv
+# Don't rely on the editable-install .pth: macOS skips .pth files flagged hidden
+# (e.g. when the repo lives in an iCloud-synced Desktop folder).
+export PYTHONPATH := src
 
 .PHONY: help
 help: ## Show this help

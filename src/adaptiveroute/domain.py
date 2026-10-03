@@ -109,7 +109,8 @@ class RoutingDecision:
     reasoning: str
     latency_ms: float
     cost_usd: float = 0.0
-    fallback_from: str | None = None  # set when this decision came from a fallback router
+    # If the requested router failed, the name of the fallback router that decided.
+    fallback: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def ranked_agents(self) -> list[str]:

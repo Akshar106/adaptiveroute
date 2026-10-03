@@ -1,0 +1,33 @@
+# Router configuration. Changing anything here changes routing behaviour, so the
+# benchmark copies this file's resolved values into every report it writes.
+
+adaptive:
+  weights:
+    similarity: 0.45   # semantic fit between query and agent profile
+    success: 0.35      # contextual historical success estimate
+    latency: 0.08      # penalty: expected latency / latency_budget_ms
+    cost: 0.07         # penalty: expected cost / cost_budget_usd
+    load: 0.05         # penalty: in-flight / max_concurrency
+    exploration: 0.0   # UCB-style bonus for agents with little evidence
+  # A similarity gap of T between two agents shrinks the weaker one's semantic term by e^-1.
+  # 0.05 was chosen from the observed spread of bge-small cosine similarities (see docs/evaluation.md).
+  similarity_temperature: 0.05
+  k_neighbors: 25
+  # Past queries below this cosine similarity are treated as unrelated. For bge-small,
+  # 90% of query pairs that belong to *different* agents fall below ~0.52.
+  min_neighbor_similarity: 0.6
+  prior_strength: 3.0          # pseudo-observations pulling estimates to the agent's global mean
+  default_success_prior: 0.7   # global success prior for an agent with no history
+  latency_budget_ms: 20000
+  cost_budget_usd: 0.002
+
+llm:
+  model: openai/gpt-oss-20b
+  reasoning_effort: low
+  max_output_tokens: 600
+  timeout_s: 15
+  fallback: embedding          # used when the LLM call fails or returns unusable output
+
+execution:
+  # If the selected agent errors or times out, retry once on the runner-up agent.
+  failover: true

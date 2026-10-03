@@ -112,6 +112,7 @@ asyncio_default_test_loop_scope = "session"
 markers = [
     "integration: needs running Postgres + Redis (docker compose up -d postgres redis)",
     "live: calls the real LLM provider (needs GROQ_API_KEY); never run in CI",
+    "slow: loads the real embedding model (downloads it on first run)",
 ]
 addopts = "-ra --strict-markers -m 'not live'"
 filterwarnings = ["ignore::DeprecationWarning:celery.*"]

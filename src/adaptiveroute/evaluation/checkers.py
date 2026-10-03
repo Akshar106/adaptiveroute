@@ -109,7 +109,8 @@ def extract_code(output: str, entrypoint: str) -> str:
     blocks = _CODE_BLOCK.findall(output)
     if not blocks:
         return output
-    defining = [b for b in blocks if re.search(rf"\bdef {re.escape(entrypoint)}\b", b)]
+    pattern = rf"\b(?:def|class) {re.escape(entrypoint)}\b"
+    defining = [b for b in blocks if re.search(pattern, b)]
     return str(max(defining or blocks, key=len))
 
 
@@ -125,7 +126,8 @@ del _r
 def _check_python(check: PythonCheck, output: str) -> CheckResult:
     code = extract_code(output, check.entrypoint)
     if not re.search(
-        rf"\bdef {re.escape(check.entrypoint)}\b|\b{re.escape(check.entrypoint)}\s*=", code
+        rf"\b(?:def|class) {re.escape(check.entrypoint)}\b|\b{re.escape(check.entrypoint)}\s*=",
+        code,
     ):
         return CheckResult(False, f"no definition of {check.entrypoint}")
     program = (
@@ -189,8 +191,9 @@ def _run_query(sql: str, timeout_s: float = 5.0) -> list[tuple[object, ...]]:
 
 def _normalise_rows(rows: list[tuple[object, ...]]) -> list[tuple[object, ...]]:
     def norm(v: object) -> object:
-        if isinstance(v, float):
-            return round(v, 2) + 0.0  # +0.0 turns -0.0 into 0.0
+        # Compare numbers by value: 1 == 1.0, and floats to 2 decimals (+0.0 fixes -0.0).
+        if isinstance(v, int | float) and not isinstance(v, bool):
+            return round(float(v), 2) + 0.0
         return v
 
     return [tuple(norm(v) for v in row) for row in rows]
@@ -218,6 +221,10 @@ _BULLET = re.compile(r"^\s*(?:[-*\u2022]|\d+[.)])\s+\S", re.M)
 _SENTENCE_END = re.compile(r"[.!?]+(?=\s|$)")
 
 
+def _has_phrase(lowered_text: str, phrase: str) -> bool:
+    return re.search(rf"(?<!\w){re.escape(phrase.lower())}(?!\w)", lowered_text) is not None
+
+
 def _words(text: str) -> list[str]:
     return re.findall(r"[A-Za-z0-9'\u2019-]+", text)  # \u2019 = curly apostrophe
 
@@ -231,11 +238,12 @@ def _check_constraints(check: ConstraintsCheck, output: str) -> CheckResult:
         failures.append(f"{n_words} words > max {check.max_words}")
     if check.min_words is not None and n_words < check.min_words:
         failures.append(f"{n_words} words < min {check.min_words}")
+    # Both lists match whole words/phrases ("ride" does not match "pride").
     for phrase in check.must_include:
-        if phrase.lower() not in low:
+        if not _has_phrase(low, phrase):
             failures.append(f"missing '{phrase}'")
     for phrase in check.must_not_include:
-        if re.search(rf"\b{re.escape(phrase.lower())}\b", low):
+        if _has_phrase(low, phrase):
             failures.append(f"contains forbidden '{phrase}'")
     if check.bullet_count is not None:
         bullets = len(_BULLET.findall(text))

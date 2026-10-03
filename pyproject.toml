@@ -89,6 +89,7 @@ ignore = [
 "tests/**" = ["S", "PTH"]
 "migrations/**" = ["E501"]
 "scripts/**" = ["S311"]  # seeded RNG for reproducible fixtures, not crypto
+"src/adaptiveroute/evaluation/report.py" = ["E501"]  # markdown table templates
 
 [tool.mypy]
 python_version = "3.12"

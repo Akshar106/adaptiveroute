@@ -180,3 +180,43 @@ def test_contains_rejects_hedged_wrong_answers() -> None:
 def test_empty_output_always_fails() -> None:
     assert not check_output(ContainsCheck(type="contains", any_of=["x"]), "  ").passed
     assert not check_output(ContainsCheck(type="contains", any_of=["x"]), None).passed
+
+
+# --- regressions found while authoring the dataset ---------------------------------
+
+
+def test_python_accepts_class_entrypoints() -> None:
+    chk = PythonCheck(
+        type="python",
+        entrypoint="Counter2",
+        tests=["c = Counter2()", "c.inc()", "assert c.value == 1"],
+    )
+    out = (
+        "```python\n"
+        "class Counter2:\n"
+        "    def __init__(self):\n"
+        "        self.value = 0\n"
+        "    def inc(self):\n"
+        "        self.value += 1\n"
+        "```"
+    )
+    assert check_output(chk, out).passed
+
+
+def test_abs_tol_is_the_effective_limit_for_large_answers() -> None:
+    chk = NumericCheck(type="numeric", answer=9767.16, abs_tol=0.005)
+    assert check_output(chk, "ANSWER: 9767.16").passed
+    assert not check_output(chk, "ANSWER: 9767.5").passed  # passed under the old rel_tol=1e-4
+
+
+def test_must_include_matches_whole_words() -> None:
+    chk = ConstraintsCheck(type="constraints", must_include=["ride"])
+    assert not check_output(chk, "Pride and joy.").passed
+    assert check_output(chk, "Enjoy the ride.").passed
+    tag = ConstraintsCheck(type="constraints", must_include=["#SleepScience"])
+    assert check_output(tag, "Rest well #SleepScience").passed
+
+
+def test_sql_compares_int_and_float_by_value() -> None:
+    chk = SqlCheck(type="sql", reference_sql="SELECT 1, 2.5")
+    assert check_output(chk, "```sql\nSELECT 1.0, 2.50\n```").passed

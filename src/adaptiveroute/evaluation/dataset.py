@@ -1,8 +1,10 @@
 """Evaluation dataset schema and loader.
 
 One JSON object per line. Every item has a deterministic ``check`` (see checkers.py)
-and a ``reference`` answer that must pass its own check; ``scripts/validate_dataset.py``
-enforces that, which is how we know the checkers and labels are consistent.
+and a ``reference`` answer that must pass its own check. The validator
+(``python -m adaptiveroute.evaluation.validate``, also run by
+tests/unit/test_dataset.py) enforces that, which is how we know the checkers and the
+labels are consistent.
 """
 
 from __future__ import annotations
@@ -22,10 +24,15 @@ class _Check(BaseModel):
 
 
 class NumericCheck(_Check):
+    """Passes if |got - answer| <= max(abs_tol, rel_tol * |answer|) (math.isclose).
+
+    rel_tol is tiny by default so an item's abs_tol (e.g. 0.005 for "round to 2
+    decimal places") is the effective limit even for large answers."""
+
     type: Literal["numeric"]
     answer: float
     abs_tol: float = 1e-6
-    rel_tol: float = 1e-4
+    rel_tol: float = 1e-9
 
 
 class PythonCheck(_Check):

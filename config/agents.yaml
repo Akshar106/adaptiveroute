@@ -1,0 +1,160 @@
+# Agent registry.
+#
+# Each agent is a specialised LLM configuration: model, reasoning effort, system
+# prompt and output contract. `examples` are hand-written queries used to build the
+# agent's embedding profile for the embedding/adaptive routers; they are deliberately
+# disjoint from the evaluation dataset (tests/unit/test_dataset.py checks this).
+#
+# `prior_latency_ms` / `prior_cost_usd` are initial guesses used until measured
+# history exists. The adaptive router shrinks towards them when evidence is thin.
+
+pricing:
+  as_of: "2026-09-28"
+  source: "Groq published list prices (https://groq.com/pricing)"
+  models:
+    openai/gpt-oss-20b: { input_per_mtok: 0.075, output_per_mtok: 0.30 }
+    openai/gpt-oss-120b: { input_per_mtok: 0.15, output_per_mtok: 0.60 }
+
+agents:
+  - name: code
+    display_name: Code Agent
+    description: >-
+      Writes, explains and debugs Python code: implementing functions and algorithms,
+      data structures, string and list processing, fixing bugs, and refactoring.
+    model: openai/gpt-oss-120b
+    reasoning_effort: medium
+    max_output_tokens: 4096
+    timeout_s: 60
+    prior_latency_ms: 4000
+    prior_cost_usd: 0.0008
+    system_prompt: |-
+      You are a senior Python engineer. Write correct, idiomatic Python 3.12 using only
+      the standard library unless told otherwise. When asked to implement something,
+      return the complete implementation in a single ```python code block, with the exact
+      function name and signature requested. Do not include example usage, tests, or
+      input() calls unless asked. Keep any explanation to two sentences after the code.
+    examples:
+      - Implement a function that checks whether a binary tree is height-balanced.
+      - My Python script raises "TypeError unhashable type list" when I use a list as a dict key. How do I fix it?
+      - Write a Python generator that yields sliding windows of size k over an iterable.
+      - Refactor this nested for loop into a list comprehension.
+      - Implement an LRU cache class with get and put in O(1).
+      - Write a function to parse ISO 8601 durations like PT1H30M into seconds.
+      - How do I merge two sorted linked lists in Python?
+      - Write a decorator that retries a function three times on exception.
+
+  - name: math
+    display_name: Math Agent
+    description: >-
+      Solves quantitative problems: arithmetic, algebra, percentages, probability,
+      combinatorics, geometry, unit conversions and multi-step word problems with a
+      single numeric answer.
+    model: openai/gpt-oss-20b
+    reasoning_effort: medium
+    max_output_tokens: 4096
+    timeout_s: 60
+    prior_latency_ms: 3000
+    prior_cost_usd: 0.0004
+    system_prompt: |-
+      You are a careful mathematician. Solve the problem, showing brief working.
+      Finish with a final line of the form "ANSWER: <number>" containing only the
+      numeric result (no units, no commas; use a decimal, not a fraction, unless the
+      answer is an integer; round to 4 decimal places if not exact).
+    examples:
+      - A train travels 300 km in 2.5 hours. What is its average speed in km per hour?
+      - Solve for x in 5x - 7 = 3x + 9.
+      - What is the probability of rolling two sixes with two fair dice?
+      - How many ways can 5 books be arranged on a shelf?
+      - A rectangle has perimeter 30 and length 9. What is its area?
+      - What is 17.5 percent of 640?
+      - If a population doubles every 3 years, by what factor does it grow in 12 years?
+      - Find the sum of the interior angles of a hexagon in degrees.
+
+  - name: sql
+    display_name: SQL Analytics Agent
+    description: >-
+      Answers business and analytics questions about the company's retail database
+      (customers, products, orders, order items, employees) by writing SQL queries:
+      revenue, counts, rankings, joins, aggregations and reports.
+    model: openai/gpt-oss-20b
+    reasoning_effort: medium
+    max_output_tokens: 3072
+    timeout_s: 45
+    prior_latency_ms: 2500
+    prior_cost_usd: 0.0004
+    system_prompt: |-
+      You are a data analyst who writes SQLite queries against the company's retail
+      database. Schema:
+
+      CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, country TEXT NOT NULL, segment TEXT NOT NULL CHECK (segment IN ('consumer', 'business')), signup_date DATE NOT NULL);
+      CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, unit_price REAL NOT NULL);
+      CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL REFERENCES customers(id), order_date DATE NOT NULL, status TEXT NOT NULL CHECK (status IN ('pending', 'shipped', 'delivered', 'cancelled')));
+      CREATE TABLE order_items (order_id INTEGER NOT NULL REFERENCES orders(id), product_id INTEGER NOT NULL REFERENCES products(id), quantity INTEGER NOT NULL CHECK (quantity > 0), unit_price REAL NOT NULL, PRIMARY KEY (order_id, product_id));
+      CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT NOT NULL, department TEXT NOT NULL, title TEXT NOT NULL, manager_id INTEGER REFERENCES employees(id), hire_date DATE NOT NULL, salary INTEGER NOT NULL);
+
+      Notes: dates are ISO strings (YYYY-MM-DD). Revenue means
+      SUM(order_items.quantity * order_items.unit_price) and excludes cancelled orders
+      unless the question says otherwise. Return exactly one query in a single ```sql
+      code block, selecting only the columns the question asks for, followed by at most
+      one sentence of explanation.
+    examples:
+      - Which product category had the most units sold last year?
+      - List customers who have never placed an order.
+      - What is the monthly order count for 2023?
+      - Show each employee alongside their manager's name.
+      - What share of orders were cancelled in each country?
+      - Find the five most expensive products in the Furniture category.
+      - Which customers placed more than three orders?
+      - What is the total revenue from business customers?
+
+  - name: writer
+    display_name: Writing Agent
+    description: >-
+      Writes and edits prose: summaries, rewrites, emails, announcements, product
+      descriptions, headlines, tone changes and text that must follow length or format
+      constraints.
+    model: openai/gpt-oss-20b
+    reasoning_effort: low
+    max_output_tokens: 2048
+    timeout_s: 30
+    prior_latency_ms: 1500
+    prior_cost_usd: 0.0002
+    system_prompt: |-
+      You are a professional editor and copywriter. Follow every explicit constraint
+      exactly: word or sentence limits, number of bullet points, required or forbidden
+      words, tone and format. Output only the requested text: no preamble, no notes,
+      no quotation marks around the whole answer.
+    examples:
+      - Rewrite this paragraph in a friendlier tone for customers.
+      - Draft a short email asking my manager for Friday off.
+      - Summarize the following meeting notes into three bullet points.
+      - Write a catchy headline for a blog post about remote work.
+      - Make this cover letter more concise.
+      - Write a two-sentence product description for a stainless steel water bottle.
+      - Turn these notes into a polite reminder message for the team.
+      - Proofread this sentence and fix grammar mistakes.
+
+  - name: knowledge
+    display_name: Knowledge Agent
+    description: >-
+      Answers general factual questions about science, history, geography, literature,
+      technology concepts and definitions, with short accurate explanations.
+    model: openai/gpt-oss-120b
+    reasoning_effort: low
+    max_output_tokens: 2048
+    timeout_s: 30
+    prior_latency_ms: 2000
+    prior_cost_usd: 0.0003
+    system_prompt: |-
+      You are a knowledgeable assistant. Answer factual questions accurately and
+      concisely. Put the direct answer in the first sentence, then add at most two
+      sentences of context. If you are unsure, say so rather than guessing.
+    examples:
+      - What causes the seasons on Earth?
+      - Who painted the ceiling of the Sistine Chapel?
+      - What is the difference between a virus and a bacterium?
+      - Which river is the longest in South America?
+      - What does DNS stand for and what does it do?
+      - When did the Berlin Wall fall?
+      - What is the main gas in Earth's atmosphere?
+      - Who developed the theory of general relativity?

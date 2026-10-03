@@ -25,6 +25,7 @@ from adaptiveroute.llm import (
     OpenAICompatClient,
 )
 from adaptiveroute.observability.logs import get_logger
+from adaptiveroute.observability.tracing import instrument_engine
 from adaptiveroute.ports import Embedder
 from adaptiveroute.response_cache import ResponseCache
 from adaptiveroute.routing import AgentProfiles, Router, RoutingConfig, build_routers
@@ -61,6 +62,7 @@ class Container:
         registry = AgentRegistry.from_yaml(settings.agents_config_path)
         routing = RoutingConfig.from_yaml(settings.routing_config_path)
         engine = create_engine(settings, pool=db_pool)
+        instrument_engine(engine, settings)
         sessions = create_session_factory(engine)
         redis = Redis.from_url(settings.redis_url, socket_timeout=2, socket_connect_timeout=2)
 

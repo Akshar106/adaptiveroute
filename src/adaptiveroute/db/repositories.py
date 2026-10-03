@@ -8,7 +8,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, select, text, tuple_, update
+from sqlalchemy import delete, func, literal, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -184,7 +184,10 @@ class QueryRepository:
         rows sharing a timestamp are never skipped or repeated across pages."""
         stmt = select(Query).order_by(Query.created_at.desc(), Query.id.desc()).limit(limit)
         if before is not None:
-            stmt = stmt.where(tuple_(Query.created_at, Query.id) < tuple_(*before))
+            ts, qid = before
+            stmt = stmt.where(
+                tuple_(Query.created_at, Query.id) < tuple_(literal(ts), literal(qid))
+            )
         if api_key_id is not None:
             stmt = stmt.where(Query.api_key_id == api_key_id)
         return (await self.session.execute(stmt)).scalars().all()

@@ -22,6 +22,7 @@ from adaptiveroute.config import Settings
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+    from sqlalchemy.ext.asyncio import AsyncEngine
 
 _configured = False
 
@@ -50,12 +51,20 @@ def configure_tracing(settings: Settings, service_name: str) -> None:
 
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
     from opentelemetry.instrumentation.redis import RedisInstrumentor
-    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
     HTTPXClientInstrumentor().instrument()
     RedisInstrumentor().instrument()
-    SQLAlchemyInstrumentor().instrument(enable_commenter=False)
     _configured = True
+
+
+def instrument_engine(engine: AsyncEngine, settings: Settings) -> None:
+    """SQL spans. Must target the engine explicitly: the global patch only covers
+    ``sqlalchemy.create_engine``, which ``create_async_engine`` doesn't go through."""
+    if not settings.otel_enabled:
+        return
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+
+    SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine, enable_commenter=False)
 
 
 def instrument_app(app: FastAPI, settings: Settings) -> None:

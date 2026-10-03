@@ -1,0 +1,42 @@
+name: adaptiveroute
+
+x-app-env: &app-env
+  AR_ENV: dev
+  AR_LOG_JSON: "true"
+  AR_DATABASE_URL: postgresql+asyncpg://adaptiveroute:adaptiveroute@postgres:5432/adaptiveroute
+  AR_REDIS_URL: redis://redis:6379/0
+  AR_OTEL_ENABLED: "true"
+  AR_OTEL_EXPORTER_ENDPOINT: http://jaeger:4317
+  AR_TRACE_QUERY_URL: http://jaeger:16686
+  AR_API_KEY_PEPPER: ${AR_API_KEY_PEPPER:-dev-only-pepper-change-me}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: adaptiveroute
+      POSTGRES_PASSWORD: adaptiveroute
+      POSTGRES_DB: adaptiveroute
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adaptiveroute -d adaptiveroute"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    ports: ["6379:6379"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
+  redisdata:

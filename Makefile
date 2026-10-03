@@ -35,3 +35,19 @@ test-integration: ## Integration tests (needs `make deps-up`)
 .PHONY: test-all
 test-all: ## All non-live tests with coverage
 	$(UV) run pytest --cov --cov-report=term-missing:skip-covered
+
+.PHONY: deps-up
+deps-up: ## Start Postgres (pgvector) + Redis for local dev/tests
+	docker compose up -d --wait postgres redis
+
+.PHONY: migrate
+migrate: ## Apply database migrations
+	$(UV) run alembic upgrade head
+
+.PHONY: migration-check
+migration-check: ## Fail if ORM models and migrations have drifted
+	$(UV) run alembic check
+
+.PHONY: validate-dataset
+validate-dataset: ## Validate the evaluation dataset (+ leakage check)
+	$(UV) run python -m adaptiveroute.evaluation.validate --embeddings

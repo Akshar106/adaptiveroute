@@ -44,6 +44,15 @@ Known weak spots found during authoring:
 - **Fail-open rate limiting** when Redis is down (deliberate, ADR 0006).
 - **Auth revocation delay** of up to 30 s, from the per-process auth cache.
 - **No streaming** responses, no multi-turn context, and no tool use by agents.
+- **Dashboard trace view is Jaeger-only.** On AWS, traces go to X-Ray and
+  `/v1/traces/{id}` returns 503. Use the X-Ray console, or add an X-Ray adapter
+  behind the same endpoint.
+- **Worker autoscaling uses CPU.** Agent execution mostly waits on the network, so
+  Celery queue depth (a custom CloudWatch metric) would be a better scaling signal.
+- **Deploy-time task interruption.** Fargate gives a stopping task at most 120 s, while
+  a Celery task may run for up to 300 s. Longer tasks are redelivered after the broker
+  visibility timeout. That is safe thanks to the atomic claim, but delayed by about
+  10 minutes.
 - **AWS deployment is defined and statically validated but not applied** in this
   repository's history. `terraform validate` and a checkov scan run, but
   `terraform apply` never ran against a real account, so the deploy workflow is

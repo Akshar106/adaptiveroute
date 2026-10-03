@@ -133,7 +133,7 @@ See [database.md](database.md) for the schema. Key decisions:
 | LLM router fails or returns invalid JSON | fall back to the embedding router; `fallback="embedding"` is recorded and counted |
 | Sync request exceeds `AR_SYNC_REQUEST_TIMEOUT_S` | 504 with the query id; query marked `failed` |
 | Redis down | rate limiter **fails open**; load tracker reports 0; caches miss. All logged and counted ([ADR 0006](adr/0006-rate-limiting.md)) |
-| Postgres down | `/readyz` returns 503, so the load balancer stops routing traffic; `/healthz` stays 200, so the orchestrator doesn't restart healthy processes |
+| Postgres down | Requests fail fast with problem+json 503/500; `/readyz` reports `not_ready`. On ECS the ALB checks `/healthz` (liveness) on purpose: ECS *replaces* targets that fail the ALB check, so a dependency-aware check would turn a DB outage into a restart storm |
 | Worker dies mid-task | message redelivered (`acks_late`); the claim prevents double execution; the stuck-query sweeper recovers anything left `running` |
 | Daily provider quota hit during benchmark collection | collection stops cleanly; the matrix file is append-only, so re-running resumes |
 

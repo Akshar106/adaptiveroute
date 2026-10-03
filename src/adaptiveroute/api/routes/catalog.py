@@ -7,7 +7,7 @@ from dataclasses import asdict
 from fastapi import APIRouter
 
 from adaptiveroute.api.deps import ContainerDep, PrincipalDep
-from adaptiveroute.api.schemas import AgentOut, AgentStatsOut, StrategiesOut, StrategyOut
+from adaptiveroute.api.schemas import AgentOut, AgentStatsOut, MeOut, StrategiesOut, StrategyOut
 from adaptiveroute.db.repositories import StatsRepository
 from adaptiveroute.routing import STRATEGIES
 from adaptiveroute.state.redis import RedisLoadTracker
@@ -57,6 +57,17 @@ async def list_agents(container: ContainerDep, principal: PrincipalDep) -> list[
             )
         )
     return out
+
+
+@router.get("/me", response_model=MeOut, summary="Who am I (the caller's API key)")
+async def whoami(principal: PrincipalDep) -> MeOut:
+    """Lets clients adapt to the caller's role (e.g. hide admin-only actions)."""
+    return MeOut(
+        api_key_id=principal.api_key_id,
+        name=principal.name,
+        role=principal.role,
+        rate_limit_per_minute=principal.rate_limit_per_minute,
+    )
 
 
 @router.get("/strategies", response_model=StrategiesOut, summary="List routing strategies")

@@ -146,6 +146,11 @@ async def test_openapi_documents_routes(h: Harness) -> None:
     spec = (await h.client.get("/openapi.json")).json()
     assert "/v1/queries" in spec["paths"]
     assert "/v1/route/compare" in spec["paths"]
+    post = spec["paths"]["/v1/queries"]["post"]["responses"]
+    assert {"401", "422", "429"} <= set(post)
+    assert post["429"]["content"]["application/problem+json"]["schema"]["$ref"].endswith(
+        "ProblemOut"
+    )
 
 
 # --- auth -------------------------------------------------------------------------
@@ -384,6 +389,7 @@ async def test_list_pagination_cursor(h: Harness, user: dict[str, str]) -> None:
         await h.client.post("/v1/queries", headers=user, json={"query": f"q{i}", "execute": False})
     page = (await h.client.get("/v1/queries?limit=2", headers=user)).json()
     assert [i["query"] for i in page["items"]] == ["q2", "q1"]
+    assert page["items"][0]["selected_agent"] and page["items"][0]["final_agent"] is None
     rest = (
         await h.client.get(
             "/v1/queries", headers=user, params={"limit": 2, "before": page["next_cursor"]}
@@ -391,6 +397,42 @@ async def test_list_pagination_cursor(h: Harness, user: dict[str, str]) -> None:
     ).json()
     assert [i["query"] for i in rest["items"]] == ["q0"]
     assert rest["next_cursor"] is None
+    # an exactly-full last page must not advertise another (empty) page
+    full = (await h.client.get("/v1/queries?limit=3", headers=user)).json()
+    assert full["next_cursor"] is None
+    bad = await h.client.get("/v1/queries", headers=user, params={"before": "not-a-cursor"})
+    assert bad.status_code == 400
+
+
+async def test_cursor_does_not_skip_rows_with_identical_timestamps(
+    h: Harness, user: dict[str, str], session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    from sqlalchemy import text as sql_text
+
+    for i in range(5):
+        await h.client.post(
+            "/v1/queries", headers=user, json={"query": f"same-{i}", "execute": False}
+        )
+    async with session_factory() as session:
+        await session.execute(sql_text("UPDATE queries SET created_at = '2026-01-01T00:00:00Z'"))
+        await session.commit()
+    seen: list[str] = []
+    cursor = None
+    while True:
+        params: dict[str, Any] = {"limit": 2} | ({"before": cursor} if cursor else {})
+        page = (await h.client.get("/v1/queries", headers=user, params=params)).json()
+        seen += [i["query"] for i in page["items"]]
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+    assert sorted(seen) == [f"same-{i}" for i in range(5)]
+
+
+async def test_me_endpoint_reports_role(
+    h: Harness, user: dict[str, str], admin: dict[str, str]
+) -> None:
+    assert (await h.client.get("/v1/me", headers=user)).json()["role"] == "user"
+    assert (await h.client.get("/v1/me", headers=admin)).json()["role"] == "admin"
 
 
 async def test_unknown_query_is_404(h: Harness, user: dict[str, str]) -> None:
@@ -472,6 +514,7 @@ async def test_benchmark_routes(
         )  # fmt: skip
     listed = (await h.client.get("/v1/benchmarks", headers=user)).json()
     assert [r["id"] for r in listed] == ["run-1"]
+    assert "summary" not in listed[0]  # the list is lightweight; detail has the report
     detail = (await h.client.get("/v1/benchmarks/run-1", headers=user)).json()
     assert detail["report_markdown"] == "# report"
     assert (await h.client.get("/v1/benchmarks/nope", headers=user)).status_code == 404
@@ -486,6 +529,9 @@ async def test_benchmark_routes(
     resp = await h.client.post("/v1/benchmarks", headers=admin, json={"seeds": [0, 1]})
     assert resp.status_code == 202
     assert started == [(resp.json()["id"], {"seeds": [0, 1], "strategies": None})]
+    # visible immediately, before any worker picks it up
+    queued = (await h.client.get(f"/v1/benchmarks/{resp.json()['id']}", headers=user)).json()
+    assert queued["status"] == "queued"
 
 
 JAEGER_TRACE = {

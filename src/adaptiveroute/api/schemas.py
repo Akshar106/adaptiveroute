@@ -35,8 +35,17 @@ class QueryCreate(BaseModel):
 
 class CandidateOut(BaseModel):
     agent: str
-    score: float
-    components: dict[str, float]
+    score: float = Field(description="Strategy-specific; higher is better.")
+    components: dict[str, float] = Field(
+        description=(
+            "Inputs behind `score`. embedding: `similarity`. llm: `confidence` (selected "
+            "agent only). adaptive: raw signals (`similarity`, `semantic`, `success`, "
+            "`evidence`, `latency_ms`, `cost_usd`, `load`, `eligible` 0/1) plus weighted "
+            "terms prefixed `contrib_` (`contrib_semantic`, `contrib_success`, "
+            "`contrib_latency`, `contrib_cost`, `contrib_load`, `contrib_exploration`) "
+            "that sum exactly to `score`; penalties are negative."
+        )
+    )
 
 
 class DecisionOut(BaseModel):
@@ -170,7 +179,11 @@ class QuerySummary(BaseModel):
     query: str
     status: str
     strategy: str
-    agent: str
+    selected_agent: str = Field(description="The router's pick.")
+    final_agent: str | None = Field(
+        description="Agent of the last execution (differs from selected_agent after a "
+        "failover); null if not executed."
+    )
     created_at: datetime
     routing_latency_ms: float
     execution_latency_ms: float | None
@@ -185,7 +198,8 @@ class QuerySummary(BaseModel):
             query=q.text[:200],
             status=q.status,
             strategy=q.strategy,
-            agent=final.agent if final is not None else q.selected_agent,
+            selected_agent=q.selected_agent,
+            final_agent=final.agent if final is not None else None,
             created_at=q.created_at,
             routing_latency_ms=q.routing_latency_ms,
             execution_latency_ms=sum(e.latency_ms for e in q.executions) if final else None,
@@ -255,16 +269,53 @@ class StrategiesOut(BaseModel):
 
 
 class BenchmarkSummaryOut(BaseModel):
+    """List entry: headline numbers only (the full report is on the detail endpoint)."""
+
     id: str
-    status: str
+    status: Literal["queued", "running", "completed", "failed"]
     created_at: datetime
     finished_at: datetime | None
     dataset_sha256: str
     git_sha: str | None
-    summary: dict[str, Any] | None
+    headline: dict[str, dict[str, float | None]] | None = Field(
+        description="Per strategy: routing_accuracy, task_success, p50_ms, p95_ms, cost_per_1k."
+    )
+
+    @classmethod
+    def from_row(cls, run: Any) -> BenchmarkSummaryOut:
+        strategies = (run.summary or {}).get("strategies", {})
+        headline = {
+            name: {
+                "routing_accuracy": s["summary"]["routing_accuracy"]["mean"],
+                "task_success": s["summary"]["task_success"]["mean"],
+                "p50_ms": s["summary"]["total_latency_ms"]["p50"],
+                "p95_ms": s["summary"]["total_latency_ms"]["p95"],
+                "cost_per_1k": s["summary"]["cost_usd"]["per_1k_queries"],
+            }
+            for name, s in strategies.items()
+            if "summary" in s
+        }
+        return cls(
+            id=run.id,
+            status=run.status,
+            created_at=run.created_at,
+            finished_at=run.finished_at,
+            dataset_sha256=run.dataset_sha256,
+            git_sha=run.git_sha,
+            headline=headline or None,
+        )
 
 
-class BenchmarkDetailOut(BenchmarkSummaryOut):
+class BenchmarkDetailOut(BaseModel):
+    id: str
+    status: Literal["queued", "running", "completed", "failed"]
+    created_at: datetime
+    finished_at: datetime | None
+    dataset_sha256: str
+    git_sha: str | None
+    summary: dict[str, Any] | None = Field(
+        description="The full report (same structure as benchmarks/results/<id>/results.json)."
+    )
     config: dict[str, Any]
     report_markdown: str | None
     error: str | None
@@ -322,6 +373,27 @@ class TraceOut(BaseModel):
     duration_ms: float
     spans: list[TraceSpanOut]
     ui_url: str | None
+
+
+class MeOut(BaseModel):
+    api_key_id: uuid.UUID
+    name: str
+    role: Literal["admin", "user"]
+    rate_limit_per_minute: int | None
+
+
+class ProblemOut(BaseModel):
+    """RFC 9457 problem details, returned for every error."""
+
+    type: str = "about:blank"
+    title: str
+    status: int
+    detail: str | None = None
+    instance: str
+    request_id: str | None
+    errors: list[dict[str, Any]] | None = Field(
+        default=None, description="Validation errors (422)."
+    )
 
 
 class HealthOut(BaseModel):

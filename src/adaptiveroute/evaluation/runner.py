@@ -37,6 +37,9 @@ from adaptiveroute.routing import AgentProfiles, RoutingConfig
 log = get_logger(__name__)
 
 
+LEARNING_CURVE_WINDOW = 25
+
+
 @dataclass(frozen=True)
 class BenchmarkOptions:
     seeds: Sequence[int] = (0, 1, 2)
@@ -177,8 +180,9 @@ async def run_replay_benchmark_core(
             if s.ablation
         },
         "baselines": matrix_baselines(rc),
+        "learning_curve_window": LEARNING_CURVE_WINDOW,
         "learning_curves": {
-            name: metrics.learning_curve(results[name])
+            name: metrics.learning_curve(results[name], window=LEARNING_CURVE_WINDOW)
             for name in ("embedding", "adaptive", "adaptive_warm")
             if name in results
         },

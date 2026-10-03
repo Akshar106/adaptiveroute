@@ -67,6 +67,37 @@ def problem(
     )
 
 
+_PROBLEM_DESCRIPTIONS = {
+    400: "Bad request",
+    401: "Missing or invalid API key",
+    403: "Admin role required",
+    404: "Not found",
+    409: "Conflict",
+    422: "Validation error (or Idempotency-Key reused with a different body)",
+    429: "Rate limit exceeded (see Retry-After)",
+    502: "Upstream failure",
+    503: "Dependency unavailable",
+    504: "Timed out (includes query_id)",
+}
+
+
+def problem_responses(*codes: int) -> dict[int | str, dict[str, Any]]:
+    """OpenAPI `responses` entries documenting problem+json errors."""
+    from adaptiveroute.api.schemas import ProblemOut
+
+    return {
+        code: {
+            "model": ProblemOut,
+            "description": _PROBLEM_DESCRIPTIONS[code],
+            # `model` registers the schema; errors are actually sent as problem+json.
+            "content": {
+                "application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemOut"}}
+            },
+        }
+        for code in codes
+    }
+
+
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(APIError)
     async def _api_error(request: Request, exc: APIError) -> JSONResponse:

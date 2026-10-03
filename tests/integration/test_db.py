@@ -114,7 +114,7 @@ async def test_list_recent_is_newest_first_with_cursor(session: AsyncSession) ->
         await session.commit()
     page = await repo.list_recent(limit=2)
     assert [q.text for q in page] == ["q2", "q1"]
-    rest = await repo.list_recent(limit=2, before=page[-1].created_at)
+    rest = await repo.list_recent(limit=2, before=(page[-1].created_at, page[-1].id))
     assert [q.text for q in rest] == ["q0"]
 
 

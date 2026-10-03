@@ -8,7 +8,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import delete, func, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -177,12 +177,14 @@ class QueryRepository:
         self,
         *,
         limit: int,
-        before: datetime | None = None,
+        before: tuple[datetime, uuid.UUID] | None = None,
         api_key_id: uuid.UUID | None = None,
     ) -> Sequence[Query]:
-        stmt = select(Query).order_by(Query.created_at.desc()).limit(limit)
+        """Newest first. Keyset pagination on (created_at, id): the id tie-breaker means
+        rows sharing a timestamp are never skipped or repeated across pages."""
+        stmt = select(Query).order_by(Query.created_at.desc(), Query.id.desc()).limit(limit)
         if before is not None:
-            stmt = stmt.where(Query.created_at < before)
+            stmt = stmt.where(tuple_(Query.created_at, Query.id) < tuple_(*before))
         if api_key_id is not None:
             stmt = stmt.where(Query.api_key_id == api_key_id)
         return (await self.session.execute(stmt)).scalars().all()

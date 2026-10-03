@@ -46,7 +46,7 @@ async def list_benchmarks(
 ) -> list[BenchmarkSummaryOut]:
     async with container.sessions() as session:
         runs = await BenchmarkRepository(session).list()
-    return [BenchmarkSummaryOut.model_validate(r, from_attributes=True) for r in runs]
+    return [BenchmarkSummaryOut.from_row(r) for r in runs]
 
 
 @benchmarks.get("/{run_id}", response_model=BenchmarkDetailOut, summary="Get a benchmark report")
@@ -75,6 +75,11 @@ async def start_benchmark(
     if enqueue is None:
         raise APIError(503, "Background jobs unavailable")
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:6]
+    # Create the row first so the run is visible (status=queued) before a worker picks it up.
+    async with container.sessions() as session:
+        await BenchmarkRepository(session).upsert(
+            {"id": run_id, "status": "queued", "dataset_sha256": "", "config": body.model_dump()}
+        )
     await enqueue(run_id, body.model_dump())
     return JobAccepted(id=run_id, status="queued", links={"self": f"/v1/benchmarks/{run_id}"})
 

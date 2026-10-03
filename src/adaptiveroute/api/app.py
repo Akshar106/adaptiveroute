@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from adaptiveroute import __version__
-from adaptiveroute.api.errors import install_error_handlers
+from adaptiveroute.api.errors import install_error_handlers, problem_responses
 from adaptiveroute.api.middleware import RequestContextMiddleware
 from adaptiveroute.api.rate_limit import RateLimiter
 from adaptiveroute.api.routes import catalog, ops, queries
@@ -102,12 +102,23 @@ def create_app(
         allow_origins=settings.cors_origins,
         allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Authorization", "X-API-Key", "Content-Type", "Idempotency-Key"],
-        expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
+        expose_headers=[
+            "X-Request-ID",
+            "X-RateLimit-Limit",
+            "X-RateLimit-Remaining",
+            "Retry-After",
+            "Idempotent-Replayed",
+        ],
     )
     app.add_middleware(RequestContextMiddleware)
 
-    for r in (queries.router, catalog.router, ops.benchmarks, ops.traces, ops.admin, ops.health):
-        app.include_router(r)
+    authed = problem_responses(401, 422, 429)
+    app.include_router(queries.router, responses=authed)
+    app.include_router(catalog.router, responses=authed)
+    app.include_router(ops.benchmarks, responses=authed | problem_responses(403, 404))
+    app.include_router(ops.traces, responses=authed | problem_responses(404, 502, 503))
+    app.include_router(ops.admin, responses=authed | problem_responses(403, 404))
+    app.include_router(ops.health)
 
     # Serve the built dashboard (frontend/dist) from the same origin when present.
     dist = PROJECT_ROOT / "frontend" / "dist"

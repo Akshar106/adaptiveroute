@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import uuid
 from datetime import datetime, timedelta
 from typing import Annotated, Any
@@ -11,7 +12,7 @@ from fastapi import APIRouter, Header, Query, status
 from fastapi.responses import JSONResponse
 
 from adaptiveroute.api.deps import ContainerDep, PrincipalDep
-from adaptiveroute.api.errors import APIError
+from adaptiveroute.api.errors import APIError, problem_responses
 from adaptiveroute.api.idempotency import request_fingerprint, run_idempotent
 from adaptiveroute.api.schemas import (
     CompareIn,
@@ -36,10 +37,7 @@ router = APIRouter(prefix="/v1", tags=["queries"])
     summary="Route a query to an agent (and optionally execute it)",
     responses={
         202: {"description": "Accepted for async execution", "model": QueryOut},
-        409: {"description": "Same Idempotency-Key still in progress"},
-        422: {"description": "Validation error or Idempotency-Key reused with another body"},
-        429: {"description": "Rate limit exceeded"},
-        504: {"description": "Sync execution exceeded the request timeout"},
+        **problem_responses(409, 422, 429, 504),
     },
 )
 async def create_query(
@@ -92,18 +90,32 @@ async def list_queries(
     container: ContainerDep,
     principal: PrincipalDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    before: Annotated[datetime | None, Query(description="Cursor from `next_cursor`")] = None,
+    before: Annotated[str | None, Query(description="Opaque cursor from `next_cursor`")] = None,
 ) -> QueryList:
     """Newest first, keyset-paginated. Admins see every query; users see their own."""
     async with container.sessions() as session:
         rows = await QueryRepository(session).list_recent(
-            limit=limit,
-            before=before,
+            limit=limit + 1,  # one extra row tells us whether another page exists
+            before=decode_cursor(before) if before else None,
             api_key_id=None if principal.is_admin else principal.api_key_id,
         )
-    items = [QuerySummary.from_row(q) for q in rows]
-    cursor = rows[-1].created_at.isoformat() if len(rows) == limit else None
-    return QueryList(items=items, next_cursor=cursor)
+    page = rows[:limit]
+    cursor = encode_cursor(page[-1].created_at, page[-1].id) if len(rows) > limit else None
+    return QueryList(items=[QuerySummary.from_row(q) for q in page], next_cursor=cursor)
+
+
+def encode_cursor(created_at: datetime, query_id: uuid.UUID) -> str:
+    raw = f"{created_at.isoformat()}|{query_id}".encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    try:
+        raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)).decode()
+        ts, qid = raw.split("|")
+        return datetime.fromisoformat(ts), uuid.UUID(qid)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise APIError(400, "Invalid cursor", "pass `next_cursor` back unchanged") from exc
 
 
 @router.get("/queries/{query_id}", response_model=QueryOut, summary="Get a query and its result")

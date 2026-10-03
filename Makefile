@@ -50,7 +50,8 @@ run-worker: ## Run a Celery worker locally
 
 .PHONY: up
 up: ## Build and start the full stack (api, worker, beat, db, redis, jaeger, prometheus, grafana)
-	docker compose up -d --build --wait api worker beat jaeger prometheus grafana
+	docker compose build migrate
+	docker compose up -d --wait api worker beat jaeger prometheus grafana
 
 .PHONY: down
 down: ## Stop the stack (keeps volumes)

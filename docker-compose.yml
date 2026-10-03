@@ -1,15 +1,28 @@
+# Local development stack.
+#   make up        -> everything (api, worker, beat, postgres, redis, jaeger, prometheus, grafana)
+#   make deps-up   -> only postgres + redis (for running the API/tests from your venv)
+#
+# Ports: API + dashboard :8000 | Jaeger UI :16686 | Prometheus :9090 | Grafana :3000
 name: adaptiveroute
 
-x-app-env: &app-env
-  AR_ENV: dev
-  AR_LOG_JSON: "true"
-  AR_DATABASE_URL: postgresql+asyncpg://adaptiveroute:adaptiveroute@postgres:5432/adaptiveroute
-  AR_REDIS_URL: redis://redis:6379/0
-  AR_OTEL_ENABLED: "true"
-  AR_OTEL_EXPORTER_ENDPOINT: http://jaeger:4317
-  AR_TRACE_QUERY_URL: http://jaeger:16686
-  AR_API_KEY_PEPPER: ${AR_API_KEY_PEPPER:-dev-only-pepper-change-me}
-  GROQ_API_KEY: ${GROQ_API_KEY:-}
+# One image for every app process. Only `migrate` builds it (everything else waits
+# for migrate), so parallel builds never race to export the same tag.
+x-app: &app
+  image: adaptiveroute:dev
+  pull_policy: never
+  env_file:
+    - path: .env
+      required: false
+  environment: &app-env
+    AR_ENV: dev
+    AR_LOG_JSON: "true"
+    AR_DATABASE_URL: postgresql+asyncpg://adaptiveroute:adaptiveroute@postgres:5432/adaptiveroute
+    AR_REDIS_URL: redis://redis:6379/0
+    AR_OTEL_ENABLED: ${AR_OTEL_ENABLED:-true}
+    AR_OTEL_EXPORTER_ENDPOINT: http://jaeger:4317
+    AR_TRACE_QUERY_URL: http://jaeger:16686
+    AR_CORS_ORIGINS: http://localhost:8000,http://localhost:5173
+  restart: unless-stopped
 
 services:
   postgres:
@@ -28,6 +41,7 @@ services:
 
   redis:
     image: redis:7.4-alpine
+    # noeviction: Celery's broker queues must never be silently evicted.
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
     ports: ["6379:6379"]
     volumes: [redisdata:/data]
@@ -36,6 +50,76 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  migrate:
+    <<: *app
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    healthcheck: { disable: true }
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *app
+    ports: ["${AR_API_PORT:-8000}:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      jaeger: { condition: service_started }
+
+  worker:
+    <<: *app
+    environment:
+      <<: *app-env
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus
+      AR_WORKER_METRICS_PORT: "9100"
+    # The multiprocess metrics dir must start empty on every boot.
+    command:
+      - sh
+      - -c
+      - rm -rf /tmp/prometheus && mkdir -p /tmp/prometheus &&
+        exec celery -A adaptiveroute.worker.celery_app worker --loglevel=INFO --concurrency=4
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A adaptiveroute.worker.celery_app inspect ping -d celery@$$HOSTNAME --timeout 5"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  beat:
+    <<: *app
+    command: ["celery", "-A", "adaptiveroute.worker.celery_app", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
+    healthcheck: { disable: true }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  jaeger:
+    image: jaegertracing/jaeger:2.21.0   # all-in-one, in-memory storage; OTLP on 4317
+    ports: ["16686:16686", "4317:4317"]
+
+  prometheus:
+    image: prom/prometheus:v3.13.4
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d"]
+    volumes: [./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro]
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:13.0.10
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin            # local dev only
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/adaptiveroute-overview.json
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
 
 volumes:
   pgdata:

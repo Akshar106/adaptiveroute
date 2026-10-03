@@ -206,7 +206,8 @@ def build() -> dict[str, Any]:
         ),
         stat(
             "HTTP 5xx ratio",
-            'sum(rate(ar_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(ar_http_requests_total[5m])), 1e-9)',
+            '(sum(rate(ar_http_requests_total{status=~"5.."}[5m])) or vector(0)) '
+            "/ clamp_min(sum(rate(ar_http_requests_total[5m])), 1e-9)",
             "percentunit",
             4,
             y,
@@ -228,14 +229,21 @@ def build() -> dict[str, Any]:
         ),
         stat(
             "Estimated spend (range)",
-            "sum(increase(ar_cost_usd_total[$__range]))",
+            "sum(increase(ar_cost_usd_total[$__range])) or vector(0)",
             "currencyUSD",
             16,
             y,
             decimals=4,
             desc="Token counts x list prices (estimate).",
         ),
-        stat("Executions in flight", "sum(ar_agent_inflight)", "short", 20, y, decimals=0),
+        stat(
+            "Executions in flight",
+            "sum(ar_agent_inflight) or vector(0)",
+            "short",
+            20,
+            y,
+            decimals=0,
+        ),
     ]
     y += 4
 

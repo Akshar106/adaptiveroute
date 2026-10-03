@@ -1,0 +1,50 @@
+{
+  "config": {
+    "url": "http://localhost:8080",
+    "concurrency": 16,
+    "duration_s": 30.0,
+    "warmup_s": 5.0,
+    "route_only": true
+  },
+  "results": [
+    {
+      "strategy": "round_robin",
+      "requests": 16497,
+      "throughput_rps": 549.9,
+      "p50_ms": 26.506416965276003,
+      "p95_ms": 38.74658397398889,
+      "p99_ms": 58.726207935251296,
+      "mean_ms": 29.09034756917925,
+      "error_rate": 0.0,
+      "status_counts": {
+        "200": 16497
+      }
+    },
+    {
+      "strategy": "embedding",
+      "requests": 16613,
+      "throughput_rps": 553.7666666666667,
+      "p50_ms": 26.11887501552701,
+      "p95_ms": 43.596958043053746,
+      "p99_ms": 56.988666066899896,
+      "mean_ms": 28.888513915436302,
+      "error_rate": 0.0,
+      "status_counts": {
+        "200": 16613
+      }
+    },
+    {
+      "strategy": "adaptive",
+      "requests": 11610,
+      "throughput_rps": 387.0,
+      "p50_ms": 38.52437494788319,
+      "p95_ms": 61.14624999463558,
+      "p99_ms": 72.03683408442885,
+      "mean_ms": 41.31214870838849,
+      "error_rate": 0.0,
+      "status_counts": {
+        "200": 11610
+      }
+    }
+  ]
+}

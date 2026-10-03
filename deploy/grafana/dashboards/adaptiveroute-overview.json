@@ -98,7 +98,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(ar_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(ar_http_requests_total[5m])), 1e-9)",
+          "expr": "(sum(rate(ar_http_requests_total{status=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(ar_http_requests_total[5m])), 1e-9)",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -245,7 +245,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(ar_cost_usd_total[$__range]))",
+          "expr": "sum(increase(ar_cost_usd_total[$__range])) or vector(0)",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -294,7 +294,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(ar_agent_inflight)",
+          "expr": "sum(ar_agent_inflight) or vector(0)",
           "legendFormat": "",
           "refId": "A",
           "instant": true

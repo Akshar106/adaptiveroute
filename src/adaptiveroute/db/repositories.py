@@ -138,8 +138,32 @@ class QueryRepository:
             query.completed_at = datetime.now(UTC)
         await self.session.flush()
 
+    async def claim(self, query_id: uuid.UUID) -> bool:
+        """Atomically move queued -> running. Only one caller can win, so a query is
+        executed at most once even if its Celery task is delivered twice."""
+        stmt = (
+            update(Query)
+            .where(Query.id == query_id, Query.status == "queued")
+            .values(status="running")
+            .returning(Query.id)
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none() is not None
+
+    async def requeue_stuck(self, older_than: timedelta) -> list[uuid.UUID]:
+        """Queries left 'running' by a crashed worker go back to 'queued'."""
+        stmt = (
+            update(Query)
+            .where(
+                Query.status == "running",
+                Query.created_at < datetime.now(UTC) - older_than,
+            )
+            .values(status="queued")
+            .returning(Query.id)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
     async def get(self, query_id: uuid.UUID) -> Query | None:
-        return await self.session.get(Query, query_id)
+        return await self.session.get(Query, query_id, populate_existing=True)
 
     async def list_recent(
         self,

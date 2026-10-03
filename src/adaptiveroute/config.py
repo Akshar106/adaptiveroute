@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     # --- observability -------------------------------------------------------
     otel_enabled: bool = False
     otel_exporter_endpoint: str = "http://localhost:4317"
+    otel_sample_ratio: float = Field(default=1.0, ge=0, le=1)
     trace_query_url: str | None = "http://localhost:16686"  # Jaeger query API
     metrics_enabled: bool = True
 

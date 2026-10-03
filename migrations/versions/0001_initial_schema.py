@@ -187,6 +187,7 @@ def upgrade() -> None:
         FROM executions e
         LEFT JOIN outcomes o ON o.execution_id = e.id
         WHERE e.finished_at > now() - interval '30 days'
+          AND NOT e.cache_hit  -- cache hits would make agents look faster than they are
         GROUP BY e.agent
         """
     )

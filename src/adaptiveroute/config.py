@@ -12,6 +12,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -116,11 +117,12 @@ class Settings(BaseSettings):
 
 
 def _with_redis_db(url: str, db: int) -> str:
-    """Return ``url`` pointed at a different logical Redis database."""
-    base, _, last = url.rpartition("/")
-    if base.startswith("redis") and last.isdigit():
-        return f"{base}/{db}"
-    return f"{url.rstrip('/')}/{db}"
+    """Same Redis server, different logical database.
+
+    Uses urllib so credentials and the query string (e.g. ``?ssl_cert_reqs=required``
+    on ``rediss://`` URLs) are preserved.
+    """
+    return urlunsplit(urlsplit(url)._replace(path=f"/{db}"))
 
 
 @lru_cache(maxsize=1)

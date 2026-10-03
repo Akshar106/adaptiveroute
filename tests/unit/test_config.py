@@ -51,3 +51,23 @@ def test_cors_origins_from_csv(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AR_CORS_ORIGINS", "https://a.example, https://b.example")
     s = Settings(_env_file=None)  # type: ignore[call-arg]
     assert s.cors_origins == ["https://a.example", "https://b.example"]
+
+
+def test_redis_tls_url_keeps_query_string_for_celery() -> None:
+    url = "rediss://:token@cache.example:6379/0?ssl_cert_reqs=required"
+    s = make(redis_url=url)
+    assert s.celery_broker_url == "rediss://:token@cache.example:6379/1?ssl_cert_reqs=required"
+    assert s.celery_result_backend == "rediss://:token@cache.example:6379/2?ssl_cert_reqs=required"
+
+
+def test_celery_accepts_rediss_backend_with_tls_options() -> None:
+    import ssl
+
+    from celery import Celery
+
+    app = Celery(
+        broker="rediss://:t@cache.example:6379/1?ssl_cert_reqs=required",
+        backend="rediss://:t@cache.example:6379/2?ssl_cert_reqs=required",
+    )
+    app.conf.broker_use_ssl = app.conf.redis_backend_use_ssl = {"ssl_cert_reqs": ssl.CERT_REQUIRED}
+    assert app.backend is not None  # constructing the backend validates the URL (no network)

@@ -11,6 +11,7 @@ Reliability settings, for long LLM tasks:
 from __future__ import annotations
 
 import os
+import ssl
 from typing import Any
 
 from celery import Celery
@@ -55,6 +56,15 @@ celery_app.conf.update(
         },
     },
 )
+
+
+if settings.celery_broker_url and settings.celery_broker_url.startswith("rediss://"):
+    # TLS to Redis (ElastiCache in-transit encryption): verify the server certificate.
+    # Without this kombu silently skips verification and the result backend refuses
+    # to start.
+    _tls = {"ssl_cert_reqs": ssl.CERT_REQUIRED}
+    celery_app.conf.broker_use_ssl = _tls
+    celery_app.conf.redis_backend_use_ssl = _tls
 
 
 @setup_logging.connect

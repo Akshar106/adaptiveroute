@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+*.egg-info/
+
+# Local config / secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# Model + data caches
+.cache/
+models_cache/
+
+# Benchmark scratch (final reports are committed under benchmarks/results/)
+benchmarks/cache/*.tmp
+benchmarks/scratch/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+
+# Terraform
+deploy/terraform/**/.terraform/
+deploy/terraform/**/*.tfstate*
+deploy/terraform/**/*.tfvars
+!deploy/terraform/**/*.tfvars.example
+deploy/terraform/**/.terraform.lock.hcl.bak
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

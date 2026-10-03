@@ -86,7 +86,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S", "PTH", "ASYNC240"]
+"tests/**" = ["S", "PTH", "ASYNC240", "E501"]
 "migrations/**" = ["E501"]
 "scripts/**" = ["S311", "E501"]  # seeded RNG for reproducible fixtures; long PromQL lines
 "src/adaptiveroute/evaluation/report.py" = ["E501"]  # markdown table templates

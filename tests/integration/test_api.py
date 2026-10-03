@@ -452,3 +452,86 @@ async def test_admin_endpoints_require_admin_role(
     ).status_code == 204
     h.app.state.authenticator._ttl = 0  # skip the 30s auth cache for this assertion
     assert (await h.client.get("/v1/agents", headers=new_headers)).status_code == 401
+
+
+# --- benchmarks + traces ---------------------------------------------------------
+
+
+async def test_benchmark_routes(
+    h: Harness,
+    user: dict[str, str],
+    admin: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from adaptiveroute.db.repositories import BenchmarkRepository
+
+    async with session_factory() as session:
+        await BenchmarkRepository(session).upsert(
+            {"id": "run-1", "status": "completed", "dataset_sha256": "abc", "config": {"seeds": [0]},
+             "summary": {"strategies": {"adaptive": {}}}, "report_markdown": "# report"}
+        )  # fmt: skip
+    listed = (await h.client.get("/v1/benchmarks", headers=user)).json()
+    assert [r["id"] for r in listed] == ["run-1"]
+    detail = (await h.client.get("/v1/benchmarks/run-1", headers=user)).json()
+    assert detail["report_markdown"] == "# report"
+    assert (await h.client.get("/v1/benchmarks/nope", headers=user)).status_code == 404
+
+    started: list[tuple[str, dict[str, Any]]] = []
+
+    async def fake_enqueue(run_id: str, options: dict[str, Any]) -> None:
+        started.append((run_id, options))
+
+    h.app.state.enqueue_benchmark = fake_enqueue
+    assert (await h.client.post("/v1/benchmarks", headers=user, json={})).status_code == 403
+    resp = await h.client.post("/v1/benchmarks", headers=admin, json={"seeds": [0, 1]})
+    assert resp.status_code == 202
+    assert started == [(resp.json()["id"], {"seeds": [0, 1], "strategies": None})]
+
+
+JAEGER_TRACE = {
+    "data": [
+        {
+            "traceID": "a" * 32,
+            "processes": {"p1": {"serviceName": "adaptiveroute-api"}},
+            "spans": [
+                {"spanID": "root", "operationName": "POST /v1/queries", "references": [],
+                 "startTime": 1_000_000, "duration": 50_000, "processID": "p1",
+                 "tags": [{"key": "http.status_code", "value": 200}]},
+                {"spanID": "child", "operationName": "route adaptive",
+                 "references": [{"refType": "CHILD_OF", "spanID": "root"}],
+                 "startTime": 1_002_000, "duration": 4_000, "processID": "p1",
+                 "tags": [{"key": "ar.routing.agent", "value": "math"}, {"key": "secret.thing", "value": "x"}]},
+                {"spanID": "llm", "operationName": "agent.execute math",
+                 "references": [{"refType": "CHILD_OF", "spanID": "root"}],
+                 "startTime": 1_010_000, "duration": 30_000, "processID": "p1",
+                 "tags": [{"key": "otel.status_code", "value": "ERROR"}]},
+            ],
+        }
+    ]
+}  # fmt: skip
+
+
+async def test_trace_proxy_flattens_jaeger_spans(
+    make_harness: Callable[..., Any], user: dict[str, str]
+) -> None:
+    import respx
+
+    async for h in make_harness(trace_query_url="http://jaeger.test"):
+        with respx.mock(assert_all_called=False) as mock:
+            mock.get(f"http://jaeger.test/api/traces/{'a' * 32}").respond(200, json=JAEGER_TRACE)
+            mock.get(f"http://jaeger.test/api/traces/{'b' * 32}").respond(404, json={"data": []})
+            body = (await h.client.get(f"/v1/traces/{'a' * 32}", headers=user)).json()
+            missing = await h.client.get(f"/v1/traces/{'b' * 32}", headers=user)
+        assert body["duration_ms"] == 50.0
+        spans = {s["name"]: s for s in body["spans"]}
+        assert spans["route adaptive"]["parent_span_id"] == "root"
+        assert spans["route adaptive"]["start_offset_ms"] == 2.0
+        assert spans["route adaptive"]["attributes"] == {"ar.routing.agent": "math"}  # filtered
+        assert spans["agent.execute math"]["status"] == "error"
+        assert body["ui_url"] == f"http://jaeger.test/trace/{'a' * 32}"
+        assert missing.status_code == 404
+        assert (await h.client.get("/v1/traces/not-hex", headers=user)).status_code == 400
+
+
+async def test_trace_proxy_without_backend_is_503(h: Harness, user: dict[str, str]) -> None:
+    assert (await h.client.get(f"/v1/traces/{'a' * 32}", headers=user)).status_code == 503

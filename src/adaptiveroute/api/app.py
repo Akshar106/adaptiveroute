@@ -6,6 +6,7 @@ import asyncio
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,6 +44,12 @@ async def _celery_enqueue(query_id: uuid.UUID, use_cache: bool) -> None:
     await asyncio.to_thread(execute_query.apply_async, args=(str(query_id), use_cache))
 
 
+async def _celery_benchmark(run_id: str, options: dict[str, Any]) -> None:
+    from adaptiveroute.worker.tasks import run_benchmark
+
+    await asyncio.to_thread(run_benchmark.apply_async, args=(run_id, options))
+
+
 async def default_container(settings: Settings) -> Container:
     return await Container.create(settings, enqueue=_celery_enqueue)
 
@@ -65,7 +72,7 @@ def create_app(
         app.state.rate_limiter = RateLimiter(
             container.redis, settings.rate_limit_per_minute, settings.rate_limit_burst
         )
-        app.state.enqueue_benchmark = None  # wired up by the benchmark module
+        app.state.enqueue_benchmark = _celery_benchmark
         log.info(
             "api_started",
             version=__version__,

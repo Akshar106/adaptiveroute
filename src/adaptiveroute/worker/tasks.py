@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import timedelta
+from typing import Any
 
 from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy.exc import OperationalError
@@ -82,3 +83,14 @@ def recover_stuck_queries(older_than_minutes: int = 10) -> list[str]:
     if ids:
         log.warning("requeued_stuck_queries", count=len(ids))
     return [str(i) for i in ids]
+
+
+@celery_app.task(name="adaptiveroute.run_benchmark", soft_time_limit=3600, time_limit=3700)
+def run_benchmark(run_id: str, options: dict[str, Any]) -> dict[str, Any]:
+    """Replay the committed outcome matrix (no new LLM calls) and store the report."""
+    from adaptiveroute.evaluation.service import run_replay_benchmark
+
+    async def go(c: Container) -> dict[str, Any]:
+        return await run_replay_benchmark(c, run_id, options)
+
+    return run(go)

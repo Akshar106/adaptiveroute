@@ -51,3 +51,11 @@ migration-check: ## Fail if ORM models and migrations have drifted
 .PHONY: validate-dataset
 validate-dataset: ## Validate the evaluation dataset (+ leakage check)
 	$(UV) run python -m adaptiveroute.evaluation.validate --embeddings
+
+.PHONY: bench-collect
+bench-collect: ## Collect the outcome matrix from Groq (resumable; needs GROQ_API_KEY)
+	$(UV) run python -m adaptiveroute.cli bench collect
+
+.PHONY: bench-run
+bench-run: ## Replay all strategies over the matrix and write a report
+	$(UV) run --group eval python -m adaptiveroute.cli bench run

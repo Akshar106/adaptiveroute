@@ -39,7 +39,7 @@ class LLMRouter(Router):
         self._names = [a.name for a in agents]
         self._llm = llm
         self._prices = prices
-        self._config = config
+        self.config = config
         self._fallback = fallback
         self._system_prompt = self._build_system_prompt()
         self._schema: dict[str, Any] = {
@@ -65,21 +65,21 @@ class LLMRouter(Router):
         )
 
     def build_request(self, query: str) -> ChatRequest:
-        clipped = query[: self._config.max_query_chars]
+        clipped = query[: self.config.max_query_chars]
         return ChatRequest(
-            model=self._config.model,
+            model=self.config.model,
             messages=(
                 {"role": "system", "content": self._system_prompt},
                 {"role": "user", "content": f"<query>\n{clipped}\n</query>"},
             ),
             temperature=0.0,
-            max_tokens=self._config.max_output_tokens,
-            reasoning_effort=self._config.reasoning_effort,
+            max_tokens=self.config.max_output_tokens,
+            reasoning_effort=self.config.reasoning_effort,
             response_format={
                 "type": "json_schema",
                 "json_schema": {"name": "route", "strict": True, "schema": self._schema},
             },
-            timeout_s=self._config.timeout_s,
+            timeout_s=self.config.timeout_s,
         )
 
     async def decide(self, ctx: QueryContext) -> RoutingDecision:
@@ -88,7 +88,7 @@ class LLMRouter(Router):
         try:
             resp = await self._llm.chat(self.build_request(ctx.text))
             tokens = (resp.input_tokens, resp.output_tokens)
-            cost = self._prices.cost(self._config.model, *tokens)
+            cost = self._prices.cost(self.config.model, *tokens)
             agent, confidence, reason = self._parse(resp.content)
         except (LLMError, ValueError) as exc:
             return await self._fall_back(ctx, exc, cost)
@@ -104,7 +104,7 @@ class LLMRouter(Router):
             latency_ms=0.0,
             cost_usd=cost,
             metadata={
-                "model": self._config.model,
+                "model": self.config.model,
                 "input_tokens": tokens[0],
                 "output_tokens": tokens[1],
                 "attempts": resp.attempts,

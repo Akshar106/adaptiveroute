@@ -1,7 +1,7 @@
 """Write the API's OpenAPI schema to docs/api/openapi.json.
 
-    uv run python scripts/export_openapi.py          # write
-    uv run python scripts/export_openapi.py --check  # CI: fail if the file is stale
+uv run python scripts/export_openapi.py          # write
+uv run python scripts/export_openapi.py --check  # CI: fail if the file is stale
 """
 
 from __future__ import annotations

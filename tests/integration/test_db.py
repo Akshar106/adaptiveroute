@@ -203,3 +203,23 @@ async def test_expired_idempotency_key_is_reclaimable(session: AsyncSession) -> 
     assert await repo.try_begin(key.id, "k", "h", timedelta(seconds=-1)) is None
     assert await repo.try_begin(key.id, "k", "h2", timedelta(hours=1)) is None
     assert await repo.purge_expired() == 0
+
+
+async def test_requeue_stuck_finds_lost_running_and_queued_work(session: AsyncSession) -> None:
+    repo = QueryRepository(session)
+    _, running = await make_query(session, unit(201))  # created with status 'running'
+    _, queued = await make_query(session, unit(202))
+    queued.status = "queued"
+    _, fresh = await make_query(session, unit(203))
+    await session.commit()
+    await session.execute(
+        text("UPDATE queries SET created_at = now() - interval '1 hour' WHERE id IN (:a, :b)"),
+        {"a": running.id, "b": queued.id},
+    )
+    await session.commit()
+
+    ids = await repo.requeue_stuck(timedelta(minutes=10))
+    await session.commit()
+    assert set(ids) == {running.id, queued.id}
+    assert (await repo.get(running.id)).status == "queued"  # type: ignore[union-attr]
+    assert (await repo.get(fresh.id)).status == "running"  # type: ignore[union-attr]

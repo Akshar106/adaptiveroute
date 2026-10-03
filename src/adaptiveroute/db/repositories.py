@@ -150,17 +150,25 @@ class QueryRepository:
         return (await self.session.execute(stmt)).scalar_one_or_none() is not None
 
     async def requeue_stuck(self, older_than: timedelta) -> list[uuid.UUID]:
-        """Queries left 'running' by a crashed worker go back to 'queued'."""
-        stmt = (
+        """Find work that will never finish on its own and return it for re-enqueueing.
+
+        * 'running' for too long: the worker died mid-execution -> reset to 'queued';
+        * 'queued' for too long: the Celery message was lost or the task crashed
+          before claiming it.
+        Re-enqueueing is safe even if the original task is merely slow, because
+        execute() claims queued -> running atomically and a duplicate becomes a no-op.
+        """
+        cutoff = datetime.now(UTC) - older_than
+        reset = (
             update(Query)
-            .where(
-                Query.status == "running",
-                Query.created_at < datetime.now(UTC) - older_than,
-            )
+            .where(Query.status == "running", Query.created_at < cutoff)
             .values(status="queued")
             .returning(Query.id)
         )
-        return list((await self.session.execute(stmt)).scalars().all())
+        ids = list((await self.session.execute(reset)).scalars().all())
+        stale = select(Query.id).where(Query.status == "queued", Query.created_at < cutoff)
+        ids += [i for i in (await self.session.execute(stale)).scalars().all() if i not in ids]
+        return ids
 
     async def get(self, query_id: uuid.UUID) -> Query | None:
         return await self.session.get(Query, query_id, populate_existing=True)

@@ -67,7 +67,7 @@ def purge_idempotency_keys() -> int:
 
 @celery_app.task(name="adaptiveroute.recover_stuck_queries", autoretry_for=TRANSIENT)
 def recover_stuck_queries(older_than_minutes: int = 10) -> list[str]:
-    """Re-queue queries left 'running' by a worker that died mid-execution."""
+    """Re-enqueue queries whose execution was lost (crashed worker or lost message)."""
 
     async def go(c: Container) -> list[uuid.UUID]:
         async with c.sessions() as session:

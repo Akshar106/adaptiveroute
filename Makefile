@@ -36,6 +36,34 @@ test-integration: ## Integration tests (needs `make deps-up`)
 test-all: ## All non-live tests with coverage
 	$(UV) run pytest --cov --cov-report=term-missing:skip-covered
 
+# Celery's prefork pool is broken on macOS (children are spawned, not forked);
+# use the solo pool locally. Containers run Linux and use prefork.
+CELERY_POOL := $(if $(filter Darwin,$(shell uname -s)),--pool=solo,--concurrency=4)
+
+.PHONY: run-api
+run-api: ## Run the API locally with autoreload (needs `make deps-up`)
+	AR_LOG_JSON=false $(UV) run uvicorn adaptiveroute.api.app:create_app --factory --reload --port $${PORT:-8000}
+
+.PHONY: run-worker
+run-worker: ## Run a Celery worker locally
+	AR_LOG_JSON=false $(UV) run celery -A adaptiveroute.worker.celery_app worker --loglevel=INFO $(CELERY_POOL)
+
+.PHONY: up
+up: ## Build and start the full stack (api, worker, beat, db, redis, jaeger, prometheus, grafana)
+	docker compose up -d --build --wait api worker beat jaeger prometheus grafana
+
+.PHONY: down
+down: ## Stop the stack (keeps volumes)
+	docker compose down
+
+.PHONY: logs
+logs: ## Tail application logs
+	docker compose logs -f api worker beat
+
+.PHONY: api-key
+api-key: ## Create an admin API key in the running stack
+	docker compose exec -T api adaptiveroute create-api-key --name local-admin --role admin
+
 .PHONY: deps-up
 deps-up: ## Start Postgres (pgvector) + Redis for local dev/tests
 	docker compose up -d --wait postgres redis

@@ -1,0 +1,253 @@
+# Deploy: build the commit CI just tested, push it to ECR, run database migrations,
+# then roll the three ECS services (api, worker, beat) onto the new image.
+#
+# AWS access uses GitHub OIDC (no stored AWS keys). The IAM role only trusts
+# workflows on refs/heads/main of this repository, so do not add an `environment:`
+# to this job: that changes the OIDC subject and AWS would refuse the role.
+#
+# Repository variables (Settings > Secrets and variables > Actions > Variables).
+# None of them are secret. `terraform output github_variables` prints them all.
+#   AWS_REGION              AWS region, e.g. us-east-1
+#   AWS_DEPLOY_ROLE_ARN     IAM role assumed via OIDC (terraform output deploy_role_arn)
+#   ECR_REPOSITORY          ECR repository name, e.g. adaptiveroute
+#   ECS_CLUSTER             ECS cluster name
+#   ECS_SERVICE_API         ECS service names
+#   ECS_SERVICE_WORKER
+#   ECS_SERVICE_BEAT
+#   ECS_TASK_FAMILY_API     task definition families (the worker family also runs migrations)
+#   ECS_TASK_FAMILY_WORKER
+#   ECS_TASK_FAMILY_BEAT
+#   PRIVATE_SUBNETS         comma-separated private subnet ids, for the migration task
+#   TASK_SECURITY_GROUP     security group for the migration task (reaches Postgres + Redis)
+#   PUBLIC_URL              base URL of the API, e.g. https://api.example.com (smoke test)
+
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write # request the OIDC token for AWS
+  contents: read
+
+# One deploy at a time. A newer deploy waits for the running one instead of
+# cancelling it halfway through a migration.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to ECS
+    # workflow_run: only if CI passed on a *push* to main of *this* repository. The
+    # branches filter alone would also match a pull request from a fork whose
+    # branch happens to be called "main".
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      # The exact commit CI tested (for manual runs: the tip of main).
+      IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
+      APP_CONTAINER: app # container name in the task definitions (ecs.tf)
+
+    steps:
+      - name: Check out the tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IMAGE_TAG }}
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: deploy-${{ github.run_id }}
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Tags are immutable, so re-running a deploy for the same commit must reuse
+      # the image instead of pushing it again.
+      - name: Check for an existing image
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          echo "uri=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" \
+               --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "Image $IMAGE_TAG already in ECR, skipping build."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.image.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@v3
+
+      # buildx build + push. `context: .` builds the checked-out commit (the default
+      # git context would use github.sha, which for workflow_run is the tip of main,
+      # not necessarily the commit CI tested). The GitHub Actions cache is shared
+      # with CI's image job, so most layers are already built.
+      - name: Build and push image
+        if: steps.image.outputs.exists == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.image.outputs.uri }}
+          provenance: false # one manifest per image; keeps the ECR lifecycle count honest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Copy the latest revision of each family, swap only the app image, register
+      # it as a new revision. Everything else (env, secrets, sizes, sidecar) comes
+      # from Terraform.
+      - name: Register task definitions
+        id: taskdefs
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          FAMILY_API: ${{ vars.ECS_TASK_FAMILY_API }}
+          FAMILY_WORKER: ${{ vars.ECS_TASK_FAMILY_WORKER }}
+          FAMILY_BEAT: ${{ vars.ECS_TASK_FAMILY_BEAT }}
+        run: |
+          set -euo pipefail
+          for svc in api worker beat; do
+            family_var="FAMILY_${svc^^}"
+            family="${!family_var}"
+            aws ecs describe-task-definition --task-definition "$family" \
+              --query taskDefinition --output json > "current-$svc.json"
+            # Fail loudly if the app container was renamed.
+            jq -e --arg name "$APP_CONTAINER" \
+              'any(.containerDefinitions[]; .name == $name)' "current-$svc.json" > /dev/null
+            # Swap the image and drop the read-only fields register-task-definition rejects.
+            jq --arg name "$APP_CONTAINER" --arg image "$IMAGE_URI" '
+              .containerDefinitions |= map(if .name == $name then .image = $image else . end)
+              | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                    .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
+            ' "current-$svc.json" > "new-$svc.json"
+            arn=$(aws ecs register-task-definition --cli-input-json "file://new-$svc.json" \
+                    --query taskDefinition.taskDefinitionArn --output text)
+            echo "Registered $arn"
+            echo "$svc=$arn" >> "$GITHUB_OUTPUT"
+          done
+
+      # Migrations run BEFORE the services change, with the new code. Old tasks keep
+      # serving meanwhile, so migrations must stay backwards compatible with the
+      # previous release (add columns first, drop them a release later).
+      - name: Run database migrations
+        env:
+          TASK_DEFINITION: ${{ steps.taskdefs.outputs.worker }}
+          SUBNETS: ${{ vars.PRIVATE_SUBNETS }}
+          SECURITY_GROUP: ${{ vars.TASK_SECURITY_GROUP }}
+          LOG_GROUP: /ecs/${{ vars.ECS_TASK_FAMILY_WORKER }}
+        run: |
+          set -euo pipefail
+          overrides=$(jq -cn --arg name "$APP_CONTAINER" \
+            '{containerOverrides: [{name: $name, command: ["alembic", "upgrade", "head"]}]}')
+          aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --task-definition "$TASK_DEFINITION" \
+            --launch-type FARGATE \
+            --started-by "deploy-${IMAGE_TAG:0:12}" \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" \
+            --overrides "$overrides" \
+            --output json > run-task.json
+          task_arn=$(jq -r '.tasks[0].taskArn // empty' run-task.json)
+          if [ -z "$task_arn" ]; then
+            echo "::error::Could not start the migration task"
+            jq '.failures' run-task.json
+            exit 1
+          fi
+          echo "Migration task: $task_arn"
+
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$task_arn"
+
+          aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$task_arn" --output json > task.json
+          exit_code=$(jq -r --arg name "$APP_CONTAINER" \
+            '.tasks[0].containers[] | select(.name == $name) | .exitCode // "none"' task.json)
+          echo "Migration exit code: $exit_code"
+
+          # Show the migration output (log stream: ecs/<container>/<task id>).
+          aws logs get-log-events --log-group-name "$LOG_GROUP" \
+            --log-stream-name "ecs/$APP_CONTAINER/${task_arn##*/}" --start-from-head \
+            --query 'events[].message' --output text || true
+
+          if [ "$exit_code" != "0" ]; then
+            echo "::error::Migrations failed (exit code: $exit_code, reason: $(jq -r '.tasks[0].stoppedReason' task.json))"
+            exit 1
+          fi
+
+      - name: Update ECS services
+        env:
+          SERVICE_API: ${{ vars.ECS_SERVICE_API }}
+          SERVICE_WORKER: ${{ vars.ECS_SERVICE_WORKER }}
+          SERVICE_BEAT: ${{ vars.ECS_SERVICE_BEAT }}
+          TD_API: ${{ steps.taskdefs.outputs.api }}
+          TD_WORKER: ${{ steps.taskdefs.outputs.worker }}
+          TD_BEAT: ${{ steps.taskdefs.outputs.beat }}
+        run: |
+          set -euo pipefail
+          declare -A target=(
+            ["$SERVICE_API"]="$TD_API"
+            ["$SERVICE_WORKER"]="$TD_WORKER"
+            ["$SERVICE_BEAT"]="$TD_BEAT"
+          )
+          for service in "${!target[@]}"; do
+            aws ecs update-service --cluster "$ECS_CLUSTER" --service "$service" \
+              --task-definition "${target[$service]}" --query 'service.serviceName' --output text
+          done
+
+          # Polls until every service has only its new tasks running and healthy.
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" \
+            --services "$SERVICE_API" "$SERVICE_WORKER" "$SERVICE_BEAT"
+
+          # "Stable" is also what a service is after the circuit breaker rolled
+          # back to the OLD revision, so check that the new one actually won.
+          for service in "${!target[@]}"; do
+            running=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$service" \
+              --query "services[0].deployments[?status=='PRIMARY'] | [0].taskDefinition" --output text)
+            if [ "$running" != "${target[$service]}" ]; then
+              echo "::error::$service is running $running, expected ${target[$service]} (rolled back?)"
+              exit 1
+            fi
+          done
+
+      - name: Smoke test
+        env:
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+        run: |
+          curl -fsS --retry 5 --retry-delay 10 --retry-all-errors --max-time 10 \
+            "${PUBLIC_URL%/}/readyz"
+
+      - name: Summary
+        if: always()
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          TD_API: ${{ steps.taskdefs.outputs.api }}
+          TD_WORKER: ${{ steps.taskdefs.outputs.worker }}
+          TD_BEAT: ${{ steps.taskdefs.outputs.beat }}
+        run: |
+          {
+            echo "### Deploy ${IMAGE_TAG:0:12}"
+            echo "- Image: \`$IMAGE_URI\`"
+            echo "- api: \`$TD_API\`"
+            echo "- worker: \`$TD_WORKER\`"
+            echo "- beat: \`$TD_BEAT\`"
+          } >> "$GITHUB_STEP_SUMMARY"

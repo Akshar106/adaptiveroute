@@ -1,0 +1,30 @@
+# Copy to terraform.tfvars (gitignored) and adjust. Only github_repo is required.
+
+github_repo = "your-github-user/adaptiveroute"
+
+# project_name = "adaptiveroute"
+# environment  = "prod"
+# aws_region   = "us-east-1"
+
+# Set false if this AWS account already has the token.actions.githubusercontent.com provider.
+# create_github_oidc_provider = true
+
+# HTTPS: an ACM certificate in aws_region plus the domain you will point at the ALB.
+# certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+# public_url      = "https://api.example.com"
+
+# api_desired_count    = 2
+# api_max_count        = 6
+# worker_desired_count = 1
+# worker_max_count     = 4
+
+# api_cpu       = 512
+# api_memory    = 1024
+# worker_cpu    = 1024
+# worker_memory = 2048
+
+# db_instance_class = "db.t4g.micro"
+# redis_node_type   = "cache.t4g.micro"
+
+# Turn off (and apply) before `terraform destroy`.
+# deletion_protection = true

@@ -1,0 +1,75 @@
+# AWS Distro for OpenTelemetry collector config, rendered once per ECS service by
+# observability.tf and handed to the sidecar in the AOT_CONFIG_CONTENT variable.
+#
+#   traces : app --OTLP gRPC :4317--> collector --> AWS X-Ray
+%{ if metrics_port != null ~}
+#   metrics: collector scrapes 127.0.0.1:${metrics_port}/metrics --> Amazon Managed Prometheus
+%{ endif ~}
+
+extensions:
+  # Signs remote-write requests with the task role's credentials.
+  sigv4auth:
+    region: ${region}
+    service: aps
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        # All interfaces inside the task; no security group opens 4317, so only
+        # containers in the same task (sharing localhost) can reach it.
+        endpoint: 0.0.0.0:4317
+%{ if metrics_port != null ~}
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: ${job_name}
+          scrape_interval: ${scrape_interval}
+          metrics_path: /metrics
+          static_configs:
+            # 127.0.0.1, not "localhost": the app listens on IPv4 only, and
+            # "localhost" may resolve to ::1 first.
+            - targets: ["127.0.0.1:${metrics_port}"]
+%{ endif ~}
+
+processors:
+  batch: {}
+  # Adds ECS metadata (cluster, task ARN, AZ, ...) as resource attributes.
+  resourcedetection:
+    detectors: [ecs]
+    timeout: 5s
+%{ if metrics_port != null ~}
+  # Every task scrapes itself as "127.0.0.1:${metrics_port}", so without this all
+  # tasks of a service would write identical series to AMP and corrupt each other.
+  # The Prometheus "instance" label is taken from service.instance.id, which we
+  # set to the task ARN.
+  resource/instance:
+    attributes:
+      - key: service.instance.id
+        from_attribute: aws.ecs.task.arn
+        action: upsert
+%{ endif ~}
+
+exporters:
+  awsxray:
+    region: ${region}
+%{ if metrics_port != null ~}
+  prometheusremotewrite:
+    endpoint: ${remote_write_url}
+    auth:
+      authenticator: sigv4auth
+%{ endif ~}
+
+service:
+  extensions: [sigv4auth]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resourcedetection, batch]
+      exporters: [awsxray]
+%{ if metrics_port != null ~}
+    metrics:
+      receivers: [prometheus]
+      processors: [resourcedetection, resource/instance, batch]
+      exporters: [prometheusremotewrite]
+%{ endif ~}

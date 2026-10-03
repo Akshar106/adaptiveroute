@@ -198,3 +198,15 @@ def test_negative_weight_rejected() -> None:
 def test_empty_candidates_rejected() -> None:
     with pytest.raises(ValueError):
         score_candidates([], CFG)
+
+
+def test_measured_zero_cost_is_not_replaced_by_the_prior() -> None:
+    agg = AgentAggregate("a", n=5, successes=5, p50_latency_ms=800.0, mean_cost_usd=0.0)
+    s = estimate_signals(agent(), 0.8, [], agg, 0, CFG)
+    assert s.cost_usd == 0.0
+    assert s.latency_ms == 800.0
+
+
+def test_explain_formats_sub_second_latency_in_ms() -> None:
+    text = explain(score_candidates([sig("a", latency_ms=350.0), sig("b")], CFG))
+    assert "~350ms" in text

@@ -151,8 +151,10 @@ executions are immutable, so the copies can't go stale.
 ## Materialised view `agent_stats`
 
 The view holds per-agent stats over the last 30 days: executions, failures, P50/P95
-latency, mean and total cost, labelled count, and successes. Cache hits are excluded
-so they don't make agents look faster than they are. Celery beat refreshes it every
+latency, mean and total cost, labelled count, and successes. Latency and mean cost
+come from **successful** executions only (migration 0002), because failures often
+fail fast and would make an agent look quicker and cheaper than it is when it
+actually answers. Cache hits are excluded for the same reason. Celery beat refreshes it every
 60 s with `REFRESH MATERIALIZED VIEW CONCURRENTLY`, which is why it has a unique index
 on `agent`; readers are never blocked. `GET /v1/agents` and the adaptive router's
 agent-level priors read it; the router also caches it per process for 5 s.

@@ -103,8 +103,11 @@ def estimate_signals(
         global_success = (aggregate.successes + k0 * cfg.default_success_prior) / (aggregate.n + k0)
     else:
         global_success = cfg.default_success_prior
-    global_latency = (aggregate.p50_latency_ms if aggregate else None) or agent.prior_latency_ms
-    global_cost = (aggregate.mean_cost_usd if aggregate else None) or agent.prior_cost_usd
+    # Explicit None checks: a measured cost of exactly 0 is data, not "missing".
+    measured_latency = aggregate.p50_latency_ms if aggregate else None
+    measured_cost = aggregate.mean_cost_usd if aggregate else None
+    global_latency = agent.prior_latency_ms if measured_latency is None else measured_latency
+    global_cost = agent.prior_cost_usd if measured_cost is None else measured_cost
 
     w_sum = succ_sum = lat_sum = cost_sum = 0.0
     for rec in neighbors:
@@ -187,10 +190,12 @@ def explain(ranked: Sequence[CandidateScore]) -> str:
     """Human-readable summary of why the top candidate won."""
     best = ranked[0]
     c = best.components
+    latency = c["latency_ms"]
+    latency_text = f"{latency / 1000:.1f}s" if latency >= 1000 else f"{latency:.0f}ms"
     text = (
         f"'{best.agent}' scored {best.score:.3f}: semantic fit {c['semantic']:.2f} "
         f"(cos {c['similarity']:.3f}), est. success {c['success']:.2f} from "
-        f"{c['evidence']:.1f} similar past queries, ~{c['latency_ms'] / 1000:.1f}s, "
+        f"{c['evidence']:.1f} similar past queries, ~{latency_text}, "
         f"~${c['cost_usd']:.5f}, load {c['load']:.0%}."
     )
     if len(ranked) > 1:

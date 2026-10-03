@@ -223,3 +223,19 @@ async def test_requeue_stuck_finds_lost_running_and_queued_work(session: AsyncSe
     assert set(ids) == {running.id, queued.id}
     assert (await repo.get(running.id)).status == "queued"  # type: ignore[union-attr]
     assert (await repo.get(fresh.id)).status == "running"  # type: ignore[union-attr]
+
+
+async def test_agent_stats_latency_ignores_failed_executions(session: AsyncSession) -> None:
+    repo, q = await make_query(session, unit(301))
+    await repo.add_execution(q, result(latency_ms=2000.0, cost_usd=0.0004), AGENT, 1)
+    _, q2 = await make_query(session, unit(302))
+    await repo.add_execution(
+        q2, result(status=ExecutionStatus.ERROR, latency_ms=1.0, cost_usd=0.0), AGENT, 1
+    )
+    await session.commit()
+    stats = StatsRepository(session)
+    await stats.refresh()
+    row = (await stats.agent_stats())["math"]
+    assert row["executions"] == 2 and row["failed_executions"] == 1
+    assert row["p50_latency_ms"] == 2000.0  # the fast failure doesn't drag latency down
+    assert row["mean_cost_usd"] == pytest.approx(0.0004)

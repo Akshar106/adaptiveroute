@@ -24,13 +24,44 @@ served by Groq (`openai/gpt-oss-20b`, `openai/gpt-oss-120b`); embeddings run loc
 
 ## Results
 
-> **Benchmark status:** the outcome matrix (150 items × 5 agents, collected against
-> Groq) has not been collected yet in this repository, so no strategy comparison is
-> reported here; see [Running the benchmark](#running-the-benchmark). The
-> methodology was fixed before any results:
-> [docs/evaluation.md](docs/evaluation.md).
+Benchmark run [`2026-10-05-groq-free-tier`](benchmarks/results/2026-10-05-groq-free-tier/report.md):
+- 150 items × 5 agents, collected once from Groq (`gpt-oss-20b` / `gpt-oss-120b`);
+- 900 real calls, 495K tokens, about $0.12 at list prices;
+- each strategy replayed over 3 seeds, with 95% bootstrap CIs over items.
 
-**Measured service performance** (route-only load test, full Docker stack on a
+| Strategy | Routing accuracy | Task success | End-to-end latency P50 / P95 | Routing P50 | Cost / 1k queries |
+|---|---|---|---|---|---|
+| round_robin | 21.1% [17.3, 24.9] | 67.3% [61.8, 72.4] | 0.62 / 2.22 s | 0.0 ms | $0.151 |
+| embedding | 88.0% [82.7, 93.3] | 87.3% [82.0, 92.0] | 0.62 / 1.88 s | 7.6 ms | $0.153 |
+| **llm** | **98.0% [95.3, 100]** | **94.0% [90.0, 97.3]** | 0.98 / 2.46 s | 325 ms | $0.188 |
+| adaptive (cold start) | 85.8% [80.0, 91.1] | 87.3% [82.0, 92.2] | 0.63 / 1.87 s | 8.3 ms | $0.152 |
+| adaptive (warm, 5-fold) | 86.7% [80.9, 91.8] | 87.8% [82.2, 92.9] | 0.62 / 1.85 s | 9.1 ms | $0.153 |
+| *oracle: cheapest agent that succeeds (reference)* | *34.0%* | *98.7%* | | | *$0.066* |
+
+The error rate after failover was 0% for every strategy; 4 of the 750 agent calls
+failed outright and failover recovered them.
+
+**What it shows**
+
+- **The LLM router wins on quality.** It gains +6.7 pp task success over embedding
+  routing (paired 95% CI [+2.7, +10.7]). On the 26 deliberately ambiguous items it
+  scores 100%, where embedding routing scores 50%. The price is +23% cost per query
+  and ~40× routing latency, which is still small next to 0.6–1 s of execution.
+- **My adaptive router did not beat plain embedding routing** (Δ task success −0.0 pp,
+  CI [−0.7, +0.7]). There are two reasons:
+  1. The embedding errors on ambiguous items are *confident*, with large similarity
+     gaps, and by design the scoring weights only let history overturn near-ties.
+  2. The dataset deliberately contains no near-duplicate queries, so kNN history is
+     sparse. Giving the router history from 80% of the items (warm start), or
+     increasing the success weight (ablation), changed nothing.
+- **There is a lot of cost headroom.** The oracle reaches 98.7% success at 43% of the
+  cost, mostly by using the cheap `writer` agent, which alone solves 80% of all items.
+  An LLM router with a cost-aware cascade is the obvious next step
+  ([future work](docs/limitations.md#future-work)).
+
+![Task success vs cost](benchmarks/results/2026-10-05-groq-free-tier/figures/success_vs_cost.png)
+
+**Service performance** (route-only load test, full Docker stack on a
 MacBook Air M4, one API process, 16 concurrent clients;
 [details](benchmarks/loadtest/README.md)):
 
@@ -45,6 +76,12 @@ The adaptive router's two extra Postgres round trips cost about 30% of throughpu
 request costs about another 30%, which is why production samples 10%.
 
 ---
+
+## Dashboard
+
+| Query: answer, router reasoning and per-term score breakdown | Benchmarks: the report above, with CIs and ablations |
+|---|---|
+| ![Query view](docs/images/dashboard-query.jpg) | ![Benchmarks view](docs/images/dashboard-benchmarks.jpg) |
 
 ## How it works
 

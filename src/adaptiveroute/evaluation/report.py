@@ -221,7 +221,12 @@ def write_figures(report: dict[str, Any], out_dir: Path) -> list[str]:
         ax.errorbar(
             x, y, yerr=[[y - lo], [hi - y]], fmt="o", color=SERIES[0], ms=8, lw=1.5, capsize=3
         )
-        labels.setdefault((round(x, 6), round(y, 3)), []).append(name)
+        # Points closer than ~1.5% of their cost and 1.5 pp share one label.
+        key = next(
+            (k for k in labels if abs(k[0] - x) <= 0.015 * max(x, 1e-9) and abs(k[1] - y) <= 1.5),
+            (x, y),
+        )
+        labels.setdefault(key, []).append(name)
     for (x, y), group in labels.items():
         ax.annotate(
             ", ".join(group),
@@ -303,31 +308,16 @@ def write_figures(report: dict[str, Any], out_dir: Path) -> list[str]:
     shown = [n for n in ("embedding", "adaptive") if n in curves]
     if shown:
         fig, ax = plt.subplots(figsize=(7, 3.6))
-        ends: list[tuple[float, str, float]] = []
         for color, name in zip(SERIES, shown, strict=False):
             pts = curves[name]
             xs = [p["position"] + 1 for p in pts]
             ys2 = [100 * p["rolling_success"] for p in pts]
             ax.plot(xs, ys2, color=color, lw=2, label=f"{name} (rolling 25)")
-            ends.append((ys2[-1], name, xs[-1]))
         if "adaptive_warm" in strategies:
             level = 100 * strategies["adaptive_warm"]["summary"]["task_success"]["mean"]
             ax.axhline(level, color=SERIES[2], lw=1.5, ls="--", label="adaptive_warm (overall)")
-        # Direct end labels, nudged apart so they never overprint.
-        placed: list[float] = []
-        for y, name, x in sorted(ends):
-            while any(abs(y - p) < 3 for p in placed):
-                y += 3
-            placed.append(y)
-            ax.annotate(
-                name,
-                (x, y),
-                xytext=(5, 0),
-                textcoords="offset points",
-                color=INK_2,
-                fontsize=8,
-                va="center",
-            )
+        # The lines often coincide, so identity comes from the legend rather than end
+        # labels (which would have to be nudged away from their lines to stay legible).
         ax.set_xlabel("Queries seen (arrival order, cold start)")
         ax.set_ylabel("Task success (%)")
         ax.legend(frameon=False, loc="lower right")

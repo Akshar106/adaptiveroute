@@ -42,7 +42,7 @@ resource "aws_db_instance" "postgres" {
   # Single-AZ to keep cost down (Multi-AZ doubles the instance price). Point-in-
   # time restore from the 7 days of automated backups is the recovery story.
   multi_az                = false
-  backup_retention_period = 7
+  backup_retention_period = var.db_backup_retention_days
   backup_window           = "07:00-07:30"         # UTC
   maintenance_window      = "sun:07:45-sun:08:30" # UTC, after the backup
   copy_tags_to_snapshot   = true

@@ -154,6 +154,17 @@ variable "redis_node_type" {
 
 # --- safety / ops ----------------------------------------------------------------
 
+variable "db_backup_retention_days" {
+  description = "Automated RDS backup retention (point-in-time recovery window). AWS Free-plan accounts allow at most 1 day."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.db_backup_retention_days >= 0 && var.db_backup_retention_days <= 35
+    error_message = "RDS allows 0-35 days."
+  }
+}
+
 variable "container_insights" {
   description = "ECS Container Insights (per-task CloudWatch metrics; one of the less predictable cost lines)."
   type        = bool

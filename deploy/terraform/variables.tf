@@ -47,6 +47,12 @@ variable "github_repo" {
   }
 }
 
+variable "github_oidc_sub_prefix" {
+  description = "OIDC subject prefix GitHub sends for this repo (sub_claim_prefix from `gh api repos/OWNER/REPO/actions/oidc/customization/sub`). Empty = classic \"repo:<github_repo>\"."
+  type        = string
+  default     = ""
+}
+
 variable "create_github_oidc_provider" {
   description = "Create the GitHub Actions OIDC provider. Set false if the account already has one (only one per URL is allowed)."
   type        = bool

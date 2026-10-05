@@ -41,7 +41,7 @@ data "aws_iam_policy_document" "github_assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      values   = ["${local.github_sub_prefix}:ref:refs/heads/main"]
     }
   }
 }
@@ -142,4 +142,12 @@ resource "aws_iam_role_policy" "github_deploy" {
   name   = "deploy-adaptiveroute"
   role   = aws_iam_role.github_deploy.id
   policy = data.aws_iam_policy_document.github_deploy.json
+}
+
+locals {
+  # Newer repositories get "immutable" OIDC subjects that embed numeric IDs, e.g.
+  # repo:OWNER@123/REPO@456 (see sub_claim_prefix in
+  # `gh api repos/OWNER/REPO/actions/oidc/customization/sub`). Pinning the IDs means a
+  # re-created account or repo with the same name cannot assume this role.
+  github_sub_prefix = var.github_oidc_sub_prefix != "" ? var.github_oidc_sub_prefix : "repo:${var.github_repo}"
 }

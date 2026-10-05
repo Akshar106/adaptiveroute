@@ -110,6 +110,24 @@ def is_provider_failure(cell: Cell) -> bool:
     )
 
 
+# Router failures are wrapped in RouterError("... : <LLMError message>"); these are the
+# message prefixes our LLM client uses for provider-side failures. A 400 such as
+# "Failed to validate JSON" is the router's own failure and is kept.
+_PROVIDER_ROUTER_MARKERS = (
+    "rate limited:",
+    "request timed out",
+    "provider timeout",
+    "provider error",
+    "transport error",
+    "deadline of",
+    "malformed provider response",
+)
+
+
+def is_provider_router_failure(record: RouterRecord) -> bool:
+    return record.error is not None and any(m in record.error for m in _PROVIDER_ROUTER_MARKERS)
+
+
 def router_fingerprint(router: LLMRouter) -> str:
     """Hash of the router's prompt + model config (changes invalidate recorded decisions)."""
     import hashlib
@@ -194,7 +212,9 @@ async def collect(
     todo_router = [i for i in dataset.items if i.id not in matrix.router]
     if retry_errors:
         todo_router += [
-            i for i in dataset.items if i.id in matrix.router and matrix.router[i.id].error
+            i
+            for i in dataset.items
+            if i.id in matrix.router and is_provider_router_failure(matrix.router[i.id])
         ]
     items = {i.id: i for i in dataset.items}
     log.info("collect_plan", cells=len(todo_cells), router=len(todo_router), path=str(path))

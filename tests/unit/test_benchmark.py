@@ -287,3 +287,16 @@ def test_retry_errors_only_targets_provider_failures() -> None:
     assert is_provider_failure(cell("timeout", "LLMTimeout: deadline exceeded"))
     assert not is_provider_failure(cell("error", "empty completion (finish_reason=length)"))
     assert not is_provider_failure(cell("success", None))
+
+
+def test_router_retry_only_targets_provider_failures() -> None:
+    from adaptiveroute.evaluation.matrix import RouterRecord, is_provider_router_failure
+
+    def rec(error: str | None) -> RouterRecord:
+        return RouterRecord("i", "fp", None, 0.0, "", 0.0, 0.0, 0, 0, error, "t")
+
+    prefix = "RouterError: LLM router failed and no fallback configured: "
+    assert is_provider_router_failure(rec(prefix + "rate limited: Rate limit reached"))
+    assert is_provider_router_failure(rec(prefix + "request timed out: ReadTimeout('')"))
+    assert not is_provider_router_failure(rec(prefix + "bad request 400: Failed to validate JSON"))
+    assert not is_provider_router_failure(rec(None))

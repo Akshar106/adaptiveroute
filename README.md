@@ -166,6 +166,7 @@ scripts/             fixture generator, OpenAPI export, Grafana dashboard genera
 - [Evaluation methodology](docs/evaluation.md): dataset, checkers, protocol, metrics, statistics
 - [Observability](docs/observability.md): logs, traces, metrics, dashboards, alerts
 - [Deployment](docs/deployment.md): local Compose and AWS (Terraform + CD)
+- [AWS deployment verification](docs/deployment-verification.md): a real end-to-end deploy, its problems and fixes, and live checks
 - [Architecture decision records](docs/adr/README.md): 9 ADRs
 - [Limitations and future work](docs/limitations.md)
 
@@ -175,8 +176,9 @@ scripts/             fixture generator, OpenAPI export, Grafana dashboard genera
 - One provider sample per (item, agent) cell.
 - The adaptive router learns from clean checker labels rather than real user feedback.
 - The code-check sandbox is not a security boundary.
-- The AWS stack is validated (`terraform validate`, checkov) but has not been applied
-  to a live account.
+- The AWS stack was deployed and verified end to end once, then torn down to save
+  cost ([evidence](docs/deployment-verification.md)); it hasn't served sustained
+  traffic.
 
 Full list: [docs/limitations.md](docs/limitations.md).
 

@@ -53,10 +53,10 @@ Known weak spots found during authoring:
   a Celery task may run for up to 300 s. Longer tasks are redelivered after the broker
   visibility timeout. That is safe thanks to the atomic claim, but delayed by about
   10 minutes.
-- **AWS deployment is defined and statically validated but not applied** in this
-  repository's history. `terraform validate` and a checkov scan run, but
-  `terraform apply` never ran against a real account, so the deploy workflow is
-  untested end to end.
+- **AWS deployment was verified once, not operated.** It was deployed end to end on
+  2026-10-05 and then torn down ([evidence](deployment-verification.md)). There has
+  been no sustained production traffic, no restore drill, and no multi-AZ failover
+  test.
 - **Groq model availability.** As of September 2026 only `gpt-oss-20b` and
   `gpt-oss-120b` are self-serve; Llama models need an enterprise contract. The agent
   roster reflects that constraint rather than an ideal model mix.

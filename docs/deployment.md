@@ -114,5 +114,6 @@ README for bootstrap and per-resource details. Summary:
   `deploy/terraform/README.md`). Fargate, the NAT gateway and the ALB dominate. Scale
   services to 0 between demos.
 
-> Status: the Terraform has been validated (`terraform validate`, `fmt`, checkov) but
-> not applied to a real AWS account as part of this repository's history.
+> Status: deployed end to end on 2026-10-05 (Terraform apply → CD workflow → live
+> checks → X-Ray and Managed Prometheus verified), then destroyed. See
+> [deployment-verification.md](deployment-verification.md).

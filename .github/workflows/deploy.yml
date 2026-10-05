@@ -46,11 +46,14 @@ jobs:
     # workflow_run: only if CI passed on a *push* to main of *this* repository. The
     # branches filter alone would also match a pull request from a fork whose
     # branch happens to be called "main".
+    # Skipped (not failed) until the AWS repository variables exist, so the repo can
+    # be public and run CI before any AWS account is set up.
     if: >-
+      vars.AWS_DEPLOY_ROLE_ARN != '' && (
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
+       github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:

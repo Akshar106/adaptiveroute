@@ -9,6 +9,9 @@ resource "aws_ecr_repository" "app" {
   # "which code is running?" always has one answer.
   image_tag_mutability = "IMMUTABLE"
 
+  # Lets `terraform destroy` remove a dev repository that still holds images.
+  force_delete = local.ephemeral
+
   # Basic vulnerability scan of every pushed image (results in the ECR console).
   image_scanning_configuration {
     scan_on_push = true

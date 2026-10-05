@@ -18,7 +18,11 @@ data "aws_caller_identity" "current" {}
 
 locals {
   # Prefix for resource names, e.g. "adaptiveroute-prod".
-  name       = "${var.project_name}-${var.environment}"
+  name = "${var.project_name}-${var.environment}"
+
+  # A "dev" environment is meant to be created and destroyed freely: no final DB
+  # snapshot, secrets deleted immediately, ECR emptied on destroy.
+  ephemeral  = var.environment == "dev"
   account_id = data.aws_caller_identity.current.account_id
 
   # Two AZs: the minimum the ALB and the RDS subnet group accept. Named

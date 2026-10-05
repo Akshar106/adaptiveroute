@@ -34,7 +34,7 @@ locals {
 resource "aws_secretsmanager_secret" "database_url" {
   name                    = "${local.name}/database-url"
   description             = "AR_DATABASE_URL: SQLAlchemy URL for PostgreSQL, including the password"
-  recovery_window_in_days = 7
+  recovery_window_in_days = local.ephemeral ? 0 : 7 # 0 = delete now, so a re-create can reuse the name
 }
 
 resource "aws_secretsmanager_secret_version" "database_url" {
@@ -54,7 +54,7 @@ resource "aws_secretsmanager_secret_version" "database_url" {
 resource "aws_secretsmanager_secret" "redis_url" {
   name                    = "${local.name}/redis-url"
   description             = "AR_REDIS_URL: rediss:// URL with the ElastiCache auth token"
-  recovery_window_in_days = 7
+  recovery_window_in_days = local.ephemeral ? 0 : 7 # 0 = delete now, so a re-create can reuse the name
 }
 
 # ssl_cert_reqs=required makes redis-py verify the server certificate. The app
@@ -70,7 +70,7 @@ resource "aws_secretsmanager_secret_version" "redis_url" {
 resource "aws_secretsmanager_secret" "api_key_pepper" {
   name                    = "${local.name}/api-key-pepper"
   description             = "AR_API_KEY_PEPPER: HMAC key for API-key hashes (changing it invalidates every key)"
-  recovery_window_in_days = 7
+  recovery_window_in_days = local.ephemeral ? 0 : 7 # 0 = delete now, so a re-create can reuse the name
 }
 
 resource "aws_secretsmanager_secret_version" "api_key_pepper" {
@@ -88,7 +88,7 @@ resource "aws_secretsmanager_secret_version" "api_key_pepper" {
 resource "aws_secretsmanager_secret" "groq_api_key" {
   name                    = "${local.name}/groq-api-key"
   description             = "GROQ_API_KEY: set manually with aws secretsmanager put-secret-value"
-  recovery_window_in_days = 7
+  recovery_window_in_days = local.ephemeral ? 0 : 7 # 0 = delete now, so a re-create can reuse the name
 }
 
 locals {

@@ -154,6 +154,12 @@ variable "redis_node_type" {
 
 # --- safety / ops ----------------------------------------------------------------
 
+variable "container_insights" {
+  description = "ECS Container Insights (per-task CloudWatch metrics; one of the less predictable cost lines)."
+  type        = bool
+  default     = true
+}
+
 variable "deletion_protection" {
   description = "Protect the RDS instance and the ALB from deletion. Set false (and apply) before terraform destroy."
   type        = bool

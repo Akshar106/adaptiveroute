@@ -19,7 +19,7 @@ resource "aws_ecs_cluster" "this" {
   # Per-service/task CPU, memory and network metrics in CloudWatch.
   setting {
     name  = "containerInsights"
-    value = "enabled"
+    value = var.container_insights ? "enabled" : "disabled"
   }
 }
 

@@ -103,7 +103,7 @@ and Redis), 91% line coverage, `mypy --strict` clean, plus 22 dashboard tests.
 ## Quickstart
 
 ```bash
-cp .env.example .env              # optional: add GROQ_API_KEY=... (agents + LLM router)
+cp -n .env.example .env           # -n: never overwrite an existing .env; then add GROQ_API_KEY=...
 make up                           # build + start api, worker, beat, postgres, redis, jaeger, prometheus, grafana
 make api-key                      # prints an admin API key once
 open http://localhost:8000        # dashboard (paste the key) · /docs for Swagger

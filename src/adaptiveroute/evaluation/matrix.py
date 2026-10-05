@@ -98,6 +98,18 @@ class OutcomeMatrix:
         return [(i.id, a) for i in items for a in agent_list if (i.id, a) not in self.cells]
 
 
+# Errors caused by the provider/our quota rather than by the agent's answer. Only these
+# are re-collected by --retry-errors; e.g. an empty completion (the model spent its
+# whole token budget reasoning) is a genuine agent outcome and is kept.
+_PROVIDER_ERRORS = ("LLMRateLimited", "LLMUnavailable", "LLMTimeout")
+
+
+def is_provider_failure(cell: Cell) -> bool:
+    return cell.status != ExecutionStatus.SUCCESS and (cell.error or "").startswith(
+        _PROVIDER_ERRORS
+    )
+
+
 def router_fingerprint(router: LLMRouter) -> str:
     """Hash of the router's prompt + model config (changes invalidate recorded decisions)."""
     import hashlib
@@ -178,7 +190,7 @@ async def collect(
 
     todo_cells = matrix.missing(dataset.items, registry.names)
     if retry_errors:
-        todo_cells += [k for k, c in matrix.cells.items() if c.status != ExecutionStatus.SUCCESS]
+        todo_cells += [k for k, c in matrix.cells.items() if is_provider_failure(c)]
     todo_router = [i for i in dataset.items if i.id not in matrix.router]
     if retry_errors:
         todo_router += [

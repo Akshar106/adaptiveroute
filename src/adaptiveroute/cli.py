@@ -57,7 +57,9 @@ def bench_collect(
     max_wait: Annotated[
         float, typer.Option(help="Stop (resumably) if asked to wait longer")
     ] = 120.0,
-    retry_errors: Annotated[bool, typer.Option(help="Re-run cells that errored")] = False,
+    retry_errors: Annotated[
+        bool, typer.Option(help="Re-run cells that failed for provider reasons (429/5xx/timeout)")
+    ] = False,
     limit: Annotated[int | None, typer.Option(help="Only the first N items (smoke test)")] = None,
 ) -> None:
     """Run every agent on every dataset item against the real LLM (resumable)."""

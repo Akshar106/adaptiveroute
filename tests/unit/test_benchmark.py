@@ -275,3 +275,15 @@ def test_folds_are_stratified_and_disjoint() -> None:
 
 def test_eval_item_type_is_reexported() -> None:
     assert isinstance(ITEMS[0], EvalItem)
+
+
+def test_retry_errors_only_targets_provider_failures() -> None:
+    from adaptiveroute.evaluation.matrix import Cell, is_provider_failure
+
+    def cell(status: str, error: str | None) -> Cell:
+        return Cell("i", "a", "fp", "m", status, False, "", 1.0, 0, 0, 0.0, 1, None, error, "t")
+
+    assert is_provider_failure(cell("error", "LLMRateLimited: rate limited: tokens per minute"))
+    assert is_provider_failure(cell("timeout", "LLMTimeout: deadline exceeded"))
+    assert not is_provider_failure(cell("error", "empty completion (finish_reason=length)"))
+    assert not is_provider_failure(cell("success", None))

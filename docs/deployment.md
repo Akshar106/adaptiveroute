@@ -7,7 +7,7 @@ LLM router need. Without one, routing still works, but execution returns `failed
 with a clear error.
 
 ```bash
-cp .env.example .env            # put GROQ_API_KEY=... in .env (optional)
+cp -n .env.example .env         # -n: never overwrite an existing .env; put GROQ_API_KEY=... in .env
 make up                         # build the image, run migrations, start everything
 make api-key                    # prints an admin API key once - copy it
 open http://localhost:8000      # dashboard: paste the key in the header field
